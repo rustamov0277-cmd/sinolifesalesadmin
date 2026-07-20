@@ -150,6 +150,18 @@ def bx_get_user(bitrix_id):
     res = resp.get("result") or []
     return res[0] if res else None
 
+EMPLOYEE_EMAIL_DOMAIN = os.environ.get("SA_EMPLOYEE_EMAIL_DOMAIN", "sinolifemanager.uz")
+
+def bx_find_user_by_number(number):
+    """Ходим рақами (исм-фамилиягa қўшилган, email'га мос) орқали қидиради.
+    Мисол: 249 -> email 249@sinolifemanager.uz."""
+    email = number + "@" + EMPLOYEE_EMAIL_DOMAIN
+    resp = _bx("user.get", {"filter": {"EMAIL": email}})
+    if "error" in resp:
+        return None
+    res = resp.get("result") or []
+    return res[0] if res else None
+
 def bx_get_departments():
     if os.path.exists(LOCAL_DEPTS_CACHE):
         with open(LOCAL_DEPTS_CACHE, encoding="utf-8") as f:
@@ -251,23 +263,26 @@ async def cmd_start(update, context):
         return
     await update.message.reply_text(
         "👋 Салом! Сизни тизимга боғлаш керак.\n\n"
-        "Bitrix24'даги шахсий ID рақамингизни юборинг (масалан: 100).\n"
-        "Билмасангиз — админдан сўранг.")
+        "Ходим рақамингизни юборинг (исм-фамилиянгизга қўшилган рақам, "
+        "масалан: 249).\nБилмасангиз — админдан сўранг.")
     order_state[u.id] = {"step": "link_wait_id"}
 
 async def handle_link_id(update, context, uid, text):
     if not text.isdigit():
-        await update.message.reply_text("❌ Фақат рақам юборинг (масалан: 100)."); return
-    bitrix_user = bx_get_user(text)
+        await update.message.reply_text("❌ Фақат рақам юборинг (масалан: 249)."); return
+    bitrix_user = bx_find_user_by_number(text)
     if not bitrix_user:
-        await update.message.reply_text("❌ Bitrix'да бундай ID топилмади. Қайта текшириб ёзинг."); return
+        await update.message.reply_text(
+            "❌ Бундай рақамли ходим топилмади (" + text + "@" + EMPLOYEE_EMAIL_DOMAIN +
+            "). Қайта текшириб ёзинг."); return
+    real_bitrix_id = bitrix_user["ID"]  # Bitrix ички ID — сақлаш учун
     full_name = (bitrix_user.get("NAME", "") + " " + bitrix_user.get("LAST_NAME", "")).strip()
     _req_counter[0] += 1
     req_id = str(_req_counter[0])
     u = update.effective_user
     pending_reqs[req_id] = {
         "tg_user_id": uid, "tg_username": u.username or "", "tg_name": u.full_name,
-        "bitrix_id": text, "bitrix_name": full_name,
+        "bitrix_id": real_bitrix_id, "employee_number": text, "bitrix_name": full_name,
     }
     order_state.pop(uid, None)
     await update.message.reply_text(
@@ -278,7 +293,8 @@ async def handle_link_id(update, context, uid, text):
         InlineKeyboardButton("❌ Рад этиш", callback_data="linkno:" + req_id)]])
     text_admin = ("🔗 Янги боғлаш сўрови:\n"
                  "Telegram: " + u.full_name + " (@" + (u.username or "-") + ")\n"
-                 "Bitrix: " + full_name + " (ID " + text + ")")
+                 "Bitrix: " + full_name + " (ходим рақами: " + text +
+                 ", Bitrix ID: " + str(real_bitrix_id) + ")")
     for aid in ADMIN_IDS:
         try:
             await context.bot.send_message(chat_id=aid, text=text_admin, reply_markup=kb)
@@ -298,7 +314,7 @@ async def cb_link_approve(update, context):
     sellers = load_sellers()
     sellers[req["bitrix_id"]] = {
         "name": req["bitrix_name"], "tg_user_id": req["tg_user_id"],
-        "tg_username": req["tg_username"],
+        "tg_username": req["tg_username"], "employee_number": req.get("employee_number", ""),
         "rop_bitrix_id": rop["head_bitrix_id"] if rop else None,
         "rop_name": rop["name"] if rop else None,
     }
