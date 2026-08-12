@@ -1,0 +1,15 @@
+[Unit]
+Description=SinolifeSalesAdmin v2 - сделка статуси кузатувчиси
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/sinolifesalesadmin_v2
+ExecStart=/bin/bash /root/sinolifesalesadmin_v2/start.sh
+Restart=always
+RestartSec=10
+StandardOutput=append:/root/sinolifesalesadmin_v2/bot.log
+StandardError=append:/root/sinolifesalesadmin_v2/bot.log
+
+[Install]
+WantedBy=multi-user.target
