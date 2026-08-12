@@ -14,7 +14,12 @@ import sheets
 
 log = logging.getLogger("poller")
 
-TERMINAL_STATUS_KEYS = {"rejected", "confirmed"}
+TERMINAL_STATUS_KEYS = {"confirmed"}
+# Диққат: "rejected" (❌ Тасдиқланмади) ЯКУНИЙ ҳисобланмайди — сотувчи кейинчалик
+# сделкани қайта кўриб чиқиб бошқа стадияга ўтказиши мумкин (масалан яна
+# тасдиқлаш жараёнига қайтариши), бот буни ҳам кузатишда давом этади ва
+# ўша хабарни янгилайди (48 соатгача edit, ундан кейин янги хабар — pastdagi
+# TELEGRAM_EDIT_LIMIT_HOURS mantig'i orqali avtomat ishlaydi).
 
 
 async def _resolve_channel_and_operator(deal):
