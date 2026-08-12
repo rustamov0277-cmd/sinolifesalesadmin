@@ -11,11 +11,13 @@ SinolifeSalesAdmin v2 — сделка статуси кузатувчиси.
   /addropgroup <rop_id> <chat_id> — РОПни каналга бириктириш
   /removeropgroup <rop_id>   — бириктиришни ўчириш
   /setaggregatechannel <chat_id> — барча буюртмалар нусхаси тушадиган умумий канал
+  /dailystats                 — кунлик статистикани қўлда кўриш (авто: ҳар куни 22:00)
   /whoami                    — ўз Telegram/чат ID'ингизни кўриш (канал ID олиш учун қулай)
 """
 import sys
 import logging
 import fcntl
+import datetime as dt
 
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
@@ -24,6 +26,7 @@ import config
 import state
 import bitrix
 import poller
+import stats
 
 # ── Бир нусхада ишлашни таъминлаш ───────────────────────────────────────────
 _lock = open("/tmp/sinolifesalesadmin_v2.lock", "w")
@@ -128,6 +131,14 @@ async def cmd_setaggregatechannel(update: Update, context: ContextTypes.DEFAULT_
     await update.effective_message.reply_text("✅ Умумий канал сақланди: " + args[0])
 
 
+async def cmd_dailystats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update):
+        await update.effective_message.reply_text("⛔ Фақат админ (шахсий чатда ёзинг).")
+        return
+    text = stats.build_daily_stats_text()
+    await update.effective_message.reply_text(text)
+
+
 # ── Polling job ──────────────────────────────────────────────────────────
 
 async def job_poll(context: ContextTypes.DEFAULT_TYPE):
@@ -141,6 +152,20 @@ async def job_poll(context: ContextTypes.DEFAULT_TYPE):
                     chat_id=aid, text="⚠️ SinolifeSalesAdmin poll хатоси: " + str(e))
             except Exception:
                 pass
+
+
+async def job_daily_stats(context: ContextTypes.DEFAULT_TYPE):
+    """Ҳар куни 22:00'да (Тошкент) умумий каналга кунлик статистика юборади."""
+    agg_chat_id = state.get_aggregate_chat_id()
+    if not agg_chat_id:
+        log.warning("Кунлик статистика: умумий канал созланмаган (/setaggregatechannel).")
+        return
+    try:
+        text = stats.build_daily_stats_text()
+        await context.bot.send_message(chat_id=agg_chat_id, text=text)
+        log.info("Кунлик статистика юборилди (канал %s).", agg_chat_id)
+    except Exception as e:
+        log.exception("job_daily_stats хатоси: %s", e)
 
 
 if __name__ == "__main__":
@@ -157,8 +182,10 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("addropgroup", cmd_addropgroup))
     app.add_handler(CommandHandler("removeropgroup", cmd_removeropgroup))
     app.add_handler(CommandHandler("setaggregatechannel", cmd_setaggregatechannel))
+    app.add_handler(CommandHandler("dailystats", cmd_dailystats))
 
     app.job_queue.run_repeating(job_poll, interval=config.POLL_INTERVAL_SECONDS, first=10)
+    app.job_queue.run_daily(job_daily_stats, time=dt.time(hour=22, minute=0, tzinfo=state.TZ))
 
     log.info("SinolifeSalesAdmin v2 ishga tushdi (poll ҳар %d сония).",
               config.POLL_INTERVAL_SECONDS)
