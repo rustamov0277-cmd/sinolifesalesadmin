@@ -106,35 +106,55 @@ async def _send_new_deal(bot, deal):
 async def _update_existing_deal(bot, deal_id, entry, fresh_deal):
     category = str(fresh_deal.get("CATEGORY_ID"))
     stage = fresh_deal.get("STAGE_ID")
-
-    if category == entry.get("category") and stage == entry.get("stage"):
-        return  # ўзгариш йўқ
-
     status_key = config.STAGE_TO_STATUS_KEY.get((category, stage))
 
     if status_key is None:
         # Кузатилмайдиган стадия (масалан "Смс zextra тастиклаш") — хабарни
         # ЎЗГАРТИРМАЙМИЗ, лекин жорий стадияни сақлаб қоламиз (такрор текширмаслик учун)
+        if category != entry.get("category") or stage != entry.get("stage"):
+            entry["category"] = category
+            entry["stage"] = stage
+            state.upsert_deal_entry(deal_id, entry)
+        return
+
+    # ── Бутун хабарни Bitrix'даги ЭНГ СЎНГГИ маълумот билан қайта қурамиз ──
+    # (фақат статус эмас — сумма, маҳсулот, манзил ва ҳ.к. ҳам ўзгарган бўлиши мумкин)
+    region_id = str(fresh_deal.get(config.FIELD_REGION) or "")
+    region_name = config.REGION_NAME_BY_ID.get(region_id, "")
+    address = fresh_deal.get(config.FIELD_ADDRESS) or ""
+    summa = fresh_deal.get("OPPORTUNITY") or 0
+    source_name = bitrix.bx_get_source_name(fresh_deal.get("SOURCE_ID"))
+
+    contact_id = fresh_deal.get("CONTACT_ID")
+    client_name, phones = bitrix.bx_get_contact(contact_id)
+    products_rows = bitrix.bx_get_deal_productrows(deal_id)
+
+    assigned_id = fresh_deal.get("ASSIGNED_BY_ID")
+    bitrix_user = bitrix.bx_get_user(assigned_id) if assigned_id else None
+    operator_name = ((bitrix_user.get("NAME") or "") + " " +
+                      (bitrix_user.get("LAST_NAME") or "")).strip() if bitrix_user else ""
+    employee_number = bitrix.get_employee_number(bitrix_user) if bitrix_user else ""
+
+    new_text = message_format.build_order_message(
+        order_num=entry["order_num"], deal_id=deal_id, products_rows=products_rows,
+        summa=summa, region_name=region_name, address=address,
+        client_name=client_name, phones=phones, operator_name=operator_name,
+        employee_number=employee_number, status_key=status_key,
+        source_name=source_name)
+
+    if new_text == entry.get("last_text"):
+        # Ҳеч нарса ўзгармаган (матн ҳам, статус ҳам) — фақат стадияни сақлаймиз
         entry["category"] = category
         entry["stage"] = stage
         state.upsert_deal_entry(deal_id, entry)
         return
 
-    if status_key == entry.get("status_key"):
-        entry["category"] = category
-        entry["stage"] = stage
-        state.upsert_deal_entry(deal_id, entry)
-        return
-
-    # ── Статус ҳақиқатан ўзгарди — хабарни таҳрирлаймиз ──────────────────
+    # ── Матн (статус ва/ёки маълумотлар) ўзгарди — хабарни таҳрирлаймиз ────
     chat_id = entry["chat_id"]
     message_id = entry["message_id"]
 
     sent_at = datetime.fromisoformat(entry["sent_at"])
     hours_passed = (state.now_tz() - sent_at).total_seconds() / 3600
-
-    new_text = message_format.replace_status_line(
-        _cached_text_or_rebuild(entry, fresh_deal), status_key)
 
     edited = False
     if hours_passed < config.TELEGRAM_EDIT_LIMIT_HOURS:
@@ -154,6 +174,8 @@ async def _update_existing_deal(bot, deal_id, entry, fresh_deal):
             log.error("Сделка %s: fallback хабар ҳам юборилмади: %s", deal_id, e)
             return
 
+    status_changed = status_key != entry.get("status_key")
+
     entry.update({
         "message_id": message_id,
         "category": category,
@@ -163,23 +185,11 @@ async def _update_existing_deal(bot, deal_id, entry, fresh_deal):
         "terminal": status_key in TERMINAL_STATUS_KEYS,
     })
     state.upsert_deal_entry(deal_id, entry)
-    sheets.update_status(entry.get("sheet_row"), status_key)
-    log.info("Сделка %s: статус -> %s (%s)", deal_id, status_key,
-              "edit" if edited else "янги хабар")
-
-
-def _cached_text_or_rebuild(entry, fresh_deal):
-    """Матнни қайта қуриш учун асос — таҳрирлашда фақат сўнгги қатор алмашгани учун
-    олдинги матнни сақлаб қўямиз (last_text), топилмаса содда fallback қурамиз."""
-    if entry.get("last_text"):
-        return entry["last_text"]
-    # fallback: жуда содда матн (амалда деярли ишлатилмайди, чунки янги сделкада
-    # last_text = build_order_message натижаси дарҳол сақланади)
-    return message_format.build_order_message(
-        order_num=entry.get("order_num", 0), deal_id=entry.get("deal_id", "?"),
-        products_rows=[], summa=fresh_deal.get("OPPORTUNITY") or 0,
-        region_name="", address="", client_name="", phones=[],
-        operator_name="", employee_number="", status_key=entry["status_key"])
+    if status_changed:
+        sheets.update_status(entry.get("sheet_row"), status_key)
+    log.info("Сделка %s: хабар янгиланди (%s)%s", deal_id,
+              "edit" if edited else "янги хабар",
+              " — статус -> " + status_key if status_changed else " — маълумот ўзгарди")
 
 
 async def poll_once(bot):
