@@ -2,11 +2,15 @@
 """
 Google Sheets'га ҳисобот учун ёзиш.
 
+Устунлар тартиби (фойдаланувчи белгилаган):
+  №, Sana, Vaqt, ROP, Operator, Mijoz, Telefon, Mahsulot, Soni, Summa,
+  Region, Manzil, Deal_ID, Xodim_raqami, Status, Manba
+
 Мантиқ:
   - Бир буюртмада N та маҳсулот бўлса — N та қатор қўшилади (ҳар маҳсулот
-    алоҳида қаторда, сони алоҳида устунда), лекин буюртма маълумотлари
-    (сана, №, mijoz, telefon va h.k.) ҲАР БИР қаторда такрорланади.
-  - Қатор рақамлари рўйхати (sheet_rows) deal_state'га сақланади.
+    алоҳида қаторда, сони алоҳида устунда).
+  - Summa ФАҚАТ БИРИНЧИ қаторга ёзилади, қолган қаторларда бўш қолади
+    (такрорланмаслиги учун).
   - Статус ўзгарса -> ШУ БУЮРТМАГА тегишли БАРЧА қаторларнинг "Status"
     устуни янгиланади (янги қатор қўшилмайди).
 """
@@ -20,10 +24,10 @@ import config
 
 log = logging.getLogger("sheets")
 
-HEADERS = ["Sana", "Vaqt", "№", "Deal_ID", "Mahsulot", "Soni", "Summa",
-           "Region", "Manzil", "Mijoz", "Telefon1", "Telefon2", "Operator",
-           "Xodim_raqami", "Status"]
-STATUS_COL = len(HEADERS)  # охирги устун
+HEADERS = ["№", "Sana", "Vaqt", "ROP", "Operator", "Mijoz", "Telefon",
+           "Mahsulot", "Soni", "Summa", "Region", "Manzil", "Deal_ID",
+           "Xodim_raqami", "Status", "Manba"]
+STATUS_COL = HEADERS.index("Status") + 1  # gspread 1-индексли
 
 _book_cache = {"book": None}
 
@@ -66,36 +70,54 @@ def _clean_money(n):
         return n
 
 
+def _combine_phones(phones):
+    """Иккита телефонни битта устунга бирлаштиради: '+998... / +998...'."""
+    phones = [p for p in (phones or []) if p]
+    return " / ".join(phones[:2])
+
+
 def log_new_order(order_num, deal_id, products_rows, summa, region_name,
                    address, client_name, phones, operator_name,
-                   employee_number, status_key):
-    """Ҳар маҳсулот учун алоҳида қатор қўшади. Қатор рақамлари рўйхатини
-    қайтаради (кейинчалик статус update учун)."""
+                   employee_number, status_key, rop_name="", source_name=""):
+    """Ҳар маҳсулот учун алоҳида қатор қўшади (Summa фақат биринчисига).
+    Қатор рақамлари рўйхатини қайтаради (кейинчалик статус update учун)."""
     try:
         ws = _ensure_ws()
         existing_rows = len(ws.get_all_values())  # header ҳам ҳисобга киради
         start_row = existing_rows + 1
 
         now = datetime.now()
-        phone1 = phones[0] if len(phones) > 0 else ""
-        phone2 = phones[1] if len(phones) > 1 else ""
+        telefon = _combine_phones(phones)
         emoji, status_text = config.STATUS_LABELS[status_key]
         status_cell = status_text + " " + emoji
         clean_summa = _clean_money(summa)
 
-        common = [now.strftime("%d.%m.%Y"), now.strftime("%H:%M"),
-                  order_num, deal_id]  # Sana, Vaqt, №, Deal_ID
-        tail = [clean_summa, region_name, address, client_name, phone1, phone2,
-                operator_name, employee_number, status_cell]
-
         rows_to_add = []
-        if products_rows:
-            for r in products_rows:
-                name = r.get("PRODUCT_NAME") or "?"
-                qty = _clean_qty(r.get("QUANTITY"))
-                rows_to_add.append(common + [name, qty] + tail)
-        else:
-            rows_to_add.append(common + ["—", ""] + tail)
+        source_list = products_rows if products_rows else [{"PRODUCT_NAME": "—", "QUANTITY": ""}]
+
+        for i, r in enumerate(source_list):
+            name = r.get("PRODUCT_NAME") or "?"
+            qty = _clean_qty(r.get("QUANTITY")) if r.get("QUANTITY") != "" else ""
+            row_summa = clean_summa if i == 0 else ""  # фақат биринчи қаторга
+
+            rows_to_add.append([
+                order_num,                      # №
+                now.strftime("%d.%m.%Y"),        # Sana
+                now.strftime("%H:%M"),           # Vaqt
+                rop_name,                        # ROP
+                operator_name,                   # Operator
+                client_name,                     # Mijoz
+                telefon,                         # Telefon
+                name,                            # Mahsulot
+                qty,                              # Soni
+                row_summa,                        # Summa
+                region_name,                      # Region
+                address,                          # Manzil
+                deal_id,                          # Deal_ID
+                employee_number,                  # Xodim_raqami
+                status_cell,                      # Status
+                source_name,                      # Manba
+            ])
 
         ws.append_rows(rows_to_add, value_input_option="USER_ENTERED")
 

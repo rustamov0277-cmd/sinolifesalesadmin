@@ -107,7 +107,8 @@ async def _send_new_deal(bot, deal):
         order_num=order_num, deal_id=deal_id, products_rows=products_rows,
         summa=summa, region_name=region_name, address=address,
         client_name=client_name, phones=phones, operator_name=operator_name,
-        employee_number=employee_number, status_key=status_key)
+        employee_number=employee_number, status_key=status_key,
+        rop_name=rop_name, source_name=source_name)
 
     state.upsert_deal_entry(deal_id, {
         "chat_id": chat_id,
