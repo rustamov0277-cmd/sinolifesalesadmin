@@ -103,7 +103,7 @@ async def _send_new_deal(bot, deal):
         except Exception as e:
             log.error("Сделка %s: умумий каналга юборилмади: %s", deal_id, e)
 
-    sheet_row = sheets.log_new_order(
+    sheet_rows = sheets.log_new_order(
         order_num=order_num, deal_id=deal_id, products_rows=products_rows,
         summa=summa, region_name=region_name, address=address,
         client_name=client_name, phones=phones, operator_name=operator_name,
@@ -121,7 +121,7 @@ async def _send_new_deal(bot, deal):
         "order_num": order_num,
         "sent_at": state.now_tz().isoformat(),
         "last_text": text,
-        "sheet_row": sheet_row,
+        "sheet_rows": sheet_rows,
         "terminal": False,
     })
     log.info("Сделка %s: янги хабар юборилди (канал %s, №%03d).", deal_id, chat_id, order_num)
@@ -230,7 +230,7 @@ async def _update_existing_deal(bot, deal_id, entry, fresh_deal):
     })
     state.upsert_deal_entry(deal_id, entry)
     if status_changed:
-        sheets.update_status(entry.get("sheet_row"), status_key)
+        sheets.update_status(entry.get("sheet_rows"), status_key)
     log.info("Сделка %s: хабар янгиланди (%s)%s", deal_id,
               "edit" if edited else "янги хабар",
               " — статус -> " + status_key if status_changed else " — маълумот ўзгарди")
