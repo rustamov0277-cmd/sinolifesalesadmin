@@ -23,12 +23,14 @@ TERMINAL_STATUS_KEYS = {"confirmed"}
 
 
 async def _resolve_channel_and_operator(deal):
-    """Сделкага бириктирилган ходимдан РОП каналини ва оператор исмини топади."""
+    """Сделкага бириктирилган ходимдан РОП каналини, РОП номини ва оператор
+    исмини топади."""
     assigned_id = deal.get("ASSIGNED_BY_ID")
     bitrix_user = bitrix.bx_get_user(assigned_id) if assigned_id else None
     operator_name = ""
     employee_number = ""
     chat_id = None
+    rop_name = ""
     if bitrix_user:
         operator_name = ((bitrix_user.get("NAME") or "") + " " +
                           (bitrix_user.get("LAST_NAME") or "")).strip()
@@ -36,12 +38,20 @@ async def _resolve_channel_and_operator(deal):
         rop = bitrix.resolve_rop_for_user(bitrix_user)
         if rop:
             chat_id = state.get_rop_chat_id(rop.get("head_bitrix_id"))
-    return chat_id, operator_name, employee_number
+            rop_name = (rop.get("name") or "").replace("(ROP)", "").strip()
+    return chat_id, operator_name, employee_number, rop_name
+
+
+def _with_rop_header(text, rop_name):
+    """Умумий канал учун — хабарнинг бошига РОП номини қўшади."""
+    if not rop_name:
+        return text
+    return f"👥 РОП: {rop_name}\n\n" + text
 
 
 async def _send_new_deal(bot, deal):
     deal_id = str(deal["ID"])
-    chat_id, operator_name, employee_number = await _resolve_channel_and_operator(deal)
+    chat_id, operator_name, employee_number, rop_name = await _resolve_channel_and_operator(deal)
 
     if not chat_id:
         log.warning("Сделка %s: РОП канали топилмади (/addropgroup билан қўшилмаган).", deal_id)
@@ -82,6 +92,17 @@ async def _send_new_deal(bot, deal):
         log.error("Сделка %s: хабар юборилмади: %s", deal_id, e)
         return
 
+    # ── Умумий каналга ҳам нусхаси (РОП номи билан) ─────────────────────
+    agg_chat_id = state.get_aggregate_chat_id()
+    agg_message_id = None
+    if agg_chat_id:
+        try:
+            agg_msg = await bot.send_message(chat_id=agg_chat_id,
+                                              text=_with_rop_header(text, rop_name))
+            agg_message_id = agg_msg.message_id
+        except Exception as e:
+            log.error("Сделка %s: умумий каналга юборилмади: %s", deal_id, e)
+
     sheet_row = sheets.log_new_order(
         order_num=order_num, deal_id=deal_id, products_rows=products_rows,
         summa=summa, region_name=region_name, address=address,
@@ -91,6 +112,9 @@ async def _send_new_deal(bot, deal):
     state.upsert_deal_entry(deal_id, {
         "chat_id": chat_id,
         "message_id": msg.message_id,
+        "agg_chat_id": agg_chat_id,
+        "agg_message_id": agg_message_id,
+        "rop_name": rop_name,
         "category": str(deal.get("CATEGORY_ID")),
         "stage": deal.get("STAGE_ID"),
         "status_key": status_key,
@@ -173,6 +197,26 @@ async def _update_existing_deal(bot, deal_id, entry, fresh_deal):
         except Exception as e:
             log.error("Сделка %s: fallback хабар ҳам юборилмади: %s", deal_id, e)
             return
+
+    # ── Умумий каналдаги нусхасини ҳам янгилаймиз ───────────────────────
+    agg_chat_id = entry.get("agg_chat_id")
+    agg_message_id = entry.get("agg_message_id")
+    if agg_chat_id:
+        agg_text = _with_rop_header(new_text, entry.get("rop_name", ""))
+        agg_edited = False
+        if agg_message_id and hours_passed < config.TELEGRAM_EDIT_LIMIT_HOURS:
+            try:
+                await bot.edit_message_text(chat_id=agg_chat_id, message_id=agg_message_id,
+                                             text=agg_text)
+                agg_edited = True
+            except Exception as e:
+                log.warning("Сделка %s: умумий канал edit муваффақиятсиз (%s).", deal_id, e)
+        if not agg_edited:
+            try:
+                agg_msg = await bot.send_message(chat_id=agg_chat_id, text=agg_text)
+                entry["agg_message_id"] = agg_msg.message_id
+            except Exception as e:
+                log.error("Сделка %s: умумий каналга юборилмади: %s", deal_id, e)
 
     status_changed = status_key != entry.get("status_key")
 

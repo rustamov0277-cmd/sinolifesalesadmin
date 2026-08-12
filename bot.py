@@ -10,6 +10,7 @@ SinolifeSalesAdmin v2 — сделка статуси кузатувчиси.
   /listrops                  — "(ROP)" бўлимлари ва уларнинг Bitrix ID'си
   /addropgroup <rop_id> <chat_id> — РОПни каналга бириктириш
   /removeropgroup <rop_id>   — бириктиришни ўчириш
+  /setaggregatechannel <chat_id> — барча буюртмалар нусхаси тушадиган умумий канал
   /whoami                    — ўз Telegram/чат ID'ингизни кўриш (канал ID олиш учун қулай)
 """
 import sys
@@ -113,6 +114,20 @@ async def cmd_removeropgroup(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.effective_message.reply_text("⚠️ Бу РОП учун бириктирилган канал топилмади.")
 
 
+async def cmd_setaggregatechannel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update):
+        await update.effective_message.reply_text("⛔ Фақат админ (шахсий чатда ёзинг).")
+        return
+    args = context.args or []
+    if not args:
+        await update.effective_message.reply_text(
+            "Қўллаш: /setaggregatechannel КАНАЛ_ID\n"
+            "(Каналда /whoami ёзиб ID'сини олинг.)")
+        return
+    state.set_aggregate_chat_id(args[0])
+    await update.effective_message.reply_text("✅ Умумий канал сақланди: " + args[0])
+
+
 # ── Polling job ──────────────────────────────────────────────────────────
 
 async def job_poll(context: ContextTypes.DEFAULT_TYPE):
@@ -141,6 +156,7 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("listrops", cmd_listrops))
     app.add_handler(CommandHandler("addropgroup", cmd_addropgroup))
     app.add_handler(CommandHandler("removeropgroup", cmd_removeropgroup))
+    app.add_handler(CommandHandler("setaggregatechannel", cmd_setaggregatechannel))
 
     app.job_queue.run_repeating(job_poll, interval=config.POLL_INTERVAL_SECONDS, first=10)
 

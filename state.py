@@ -18,6 +18,7 @@ DEAL_STATE_FILE = BASE_DIR / "deal_state.json"        # deal_id -> {...}
 ORDER_COUNTERS_FILE = BASE_DIR / "order_counters.json"  # chat_id -> {date, counter}
 ROP_GROUPS_FILE = BASE_DIR / "rop_groups.json"          # rop_bitrix_id -> chat_id
 POLL_META_FILE = BASE_DIR / "poll_meta.json"            # {"last_poll_iso": ...}
+AGGREGATE_FILE = BASE_DIR / "aggregate_channel.json"     # {"chat_id": ...}
 
 
 def _load(path, default):
@@ -113,3 +114,13 @@ def get_last_poll_iso():
 
 def set_last_poll_iso(iso_str):
     _save(POLL_META_FILE, {"last_poll_iso": iso_str})
+
+
+# ═══════════════════════ Умумий (барча РОПлар) канали ═══════════════════════
+
+def get_aggregate_chat_id():
+    return _load(AGGREGATE_FILE, {}).get("chat_id")
+
+
+def set_aggregate_chat_id(chat_id):
+    _save(AGGREGATE_FILE, {"chat_id": str(chat_id)})
