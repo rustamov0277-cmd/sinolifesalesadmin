@@ -83,7 +83,7 @@ def bx_get_deals_by_ids(deal_ids):
         return {}
     resp = _bx("crm.deal.list", {
         "filter": {"ID": list(deal_ids)},
-        "select": ["ID", "TITLE", "CATEGORY_ID", "STAGE_ID", "OPPORTUNITY",
+        "select": ["ID", "TITLE", "CATEGORY_ID", "STAGE_ID", "OPPORTUNITY", "SOURCE_ID",
                    "CONTACT_ID", "ASSIGNED_BY_ID", config.FIELD_REGION,
                    config.FIELD_ADDRESS, "DATE_MODIFY"],
     })
@@ -104,7 +104,7 @@ def bx_get_new_confirm_deals(since_iso):
     return bx_call_list_all("crm.deal.list", {
         "filter": filt,
         "order": {"DATE_MODIFY": "ASC"},
-        "select": ["ID", "TITLE", "CATEGORY_ID", "STAGE_ID", "OPPORTUNITY",
+        "select": ["ID", "TITLE", "CATEGORY_ID", "STAGE_ID", "OPPORTUNITY", "SOURCE_ID",
                    "CONTACT_ID", "ASSIGNED_BY_ID", config.FIELD_REGION,
                    config.FIELD_ADDRESS, "DATE_MODIFY"],
     })
@@ -171,6 +171,22 @@ def bx_get_departments():
         _depts_cache["depts"] = depts
         _depts_cache["ts"] = now
     return depts or _depts_cache["depts"]
+
+
+_sources_cache = {"ts": 0, "map": {}}
+
+
+def bx_get_source_name(source_id):
+    """SOURCE_ID кодини (масалан 'ADVERTISING') инсон ўқийдиган номга айлантиради."""
+    if not source_id:
+        return ""
+    now = time.time()
+    if not _sources_cache["map"] or now - _sources_cache["ts"] > 6 * 3600:
+        resp = _bx("crm.status.list", {"filter": {"ENTITY_ID": "SOURCE"}})
+        if "error" not in resp:
+            _sources_cache["map"] = {s["STATUS_ID"]: s["NAME"] for s in resp.get("result", [])}
+            _sources_cache["ts"] = now
+    return _sources_cache["map"].get(source_id, source_id)
 
 
 def find_rop_for_department(dept_id, depts):

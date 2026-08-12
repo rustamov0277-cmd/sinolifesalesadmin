@@ -64,6 +64,7 @@ async def _send_new_deal(bot, deal):
     client_name, phones = bitrix.bx_get_contact(contact_id)
 
     products_rows = bitrix.bx_get_deal_productrows(deal_id)
+    source_name = bitrix.bx_get_source_name(deal.get("SOURCE_ID"))
 
     order_num = state.next_order_number(chat_id)
     status_key = "confirm_new"
@@ -72,7 +73,8 @@ async def _send_new_deal(bot, deal):
         order_num=order_num, deal_id=deal_id, products_rows=products_rows,
         summa=summa, region_name=region_name, address=address,
         client_name=client_name, phones=phones, operator_name=operator_name,
-        employee_number=employee_number, status_key=status_key)
+        employee_number=employee_number, status_key=status_key,
+        source_name=source_name)
 
     try:
         msg = await bot.send_message(chat_id=chat_id, text=text)

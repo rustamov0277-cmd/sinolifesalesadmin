@@ -31,12 +31,13 @@ def format_status_line(status_key):
 
 def build_order_message(order_num, deal_id, products_rows, summa, region_name,
                          address, client_name, phones, operator_name,
-                         employee_number, status_key):
+                         employee_number, status_key, source_name=""):
     """
     Тўлиқ хабар матни:
 
     №006
     🗒Id сделки: 363678
+    🌐Источник: ...        (бор бўлса)
     📦Продукт: ...
     💵Сумма: 2350000
     📍Регион: Андижан
@@ -51,6 +52,10 @@ def build_order_message(order_num, deal_id, products_rows, summa, region_name,
     lines = [
         f"№{order_num:03d}",
         f"🗒Id сделки: {deal_id}",
+    ]
+    if source_name:
+        lines.append(f"🌐Источник: {source_name}")
+    lines += [
         f"📦Продукт: {format_products(products_rows)}",
         f"💵Сумма: {format_money(summa)}",
         f"📍Регион: {region_name or '—'}",
