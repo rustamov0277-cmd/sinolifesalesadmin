@@ -128,10 +128,10 @@ def bx_get_contact(contact_id):
     if "error" in resp:
         return "", []
     c = resp.get("result") or {}
-    full_name = (c.get("NAME", "") + " " + c.get("LAST_NAME", "")).strip()
+    full_name = ((c.get("NAME") or "") + " " + (c.get("LAST_NAME") or "")).strip()
     phones = []
     for p in (c.get("PHONE") or []):
-        val = p.get("VALUE", "").strip()
+        val = (p.get("VALUE") or "").strip()
         if val:
             phones.append(val)
     return full_name, phones

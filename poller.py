@@ -25,8 +25,8 @@ async def _resolve_channel_and_operator(deal):
     employee_number = ""
     chat_id = None
     if bitrix_user:
-        operator_name = (bitrix_user.get("NAME", "") + " " +
-                          bitrix_user.get("LAST_NAME", "")).strip()
+        operator_name = ((bitrix_user.get("NAME") or "") + " " +
+                          (bitrix_user.get("LAST_NAME") or "")).strip()
         employee_number = bitrix.get_employee_number(bitrix_user)
         rop = bitrix.resolve_rop_for_user(bitrix_user)
         if rop:
