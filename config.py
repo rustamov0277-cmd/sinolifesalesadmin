@@ -42,6 +42,13 @@ CATEGORY_CONFIRM_IGNORED_STAGES = {
 CATEGORY_DELIVERY = "6"
 STAGE_DELIVERY_NEW = "C6:NEW"  # Подготовка товара -> ✅ Тасдиқланди
 
+# МУҲИМ: "Ошибка первичный отдел" стадияси танланганда, Bitrix'нинг ўзи
+# сделкани автомат равишда "Первичный отдел" (category 12) воронкасидаги
+# "Тасдикланмаган" стадиясига кўчиради (C4:LOSE'да қолдирмайди!).
+# Шунинг учун якуний "рад этилди" ҳолати шу ерда ушланади:
+CATEGORY_PRIMARY = "12"
+STAGE_PRIMARY_REJECTED = "C12:UC_1OM8B2"  # Тасдикланмаган
+
 # Статус -> (эмодзи, матн) — каналдаги хабарнинг охирги қатори шундан қурилади
 STATUS_LABELS = {
     "confirm_new":   ("🕔", "Тасдиқлаш"),
@@ -54,7 +61,8 @@ STATUS_LABELS = {
 STAGE_TO_STATUS_KEY = {
     (CATEGORY_CONFIRM, STAGE_CONFIRM_NEW): "confirm_new",
     (CATEGORY_CONFIRM, STAGE_CONFIRM_NODZVON): "no_answer",
-    (CATEGORY_CONFIRM, STAGE_CONFIRM_LOSE): "rejected",
+    (CATEGORY_CONFIRM, STAGE_CONFIRM_LOSE): "rejected",     # эҳтиёт учун (агар автоматика ишламаса)
+    (CATEGORY_PRIMARY, STAGE_PRIMARY_REJECTED): "rejected",  # Bitrix автомат кўчиргандаги ҳақиқий жой
     (CATEGORY_DELIVERY, STAGE_DELIVERY_NEW): "confirmed",
 }
 
