@@ -37,12 +37,15 @@ logging.basicConfig(level=logging.INFO,
 log = logging.getLogger("bot")
 
 
-def is_admin(uid):
-    return uid in config.ADMIN_IDS
+def is_admin(update):
+    """Каналда (channel_post) юборилган буйруқда effective_user йўқ (анонимча
+    ҳисобланади) — шунинг учун бу ерда None бўлиши мумкин, шунда False қайтади."""
+    user = update.effective_user
+    return bool(user) and user.id in config.ADMIN_IDS
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
+    await update.effective_message.reply_text(
         "👋 SinolifeSalesAdmin — сделка статуси кузатувчиси.\n"
         "Бу бот буюртма киритиш учун эмас, у Bitrix'даги сделка статусини "
         "автомат каналларга эълон қилади.\n\n"
@@ -51,19 +54,19 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_whoami(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
-    await update.message.reply_text(
+    await update.effective_message.reply_text(
         "🆔 Chat ID: " + str(chat.id) + "\n"
         "📌 Тури: " + chat.type)
 
 
 async def cmd_listrops(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
-        await update.message.reply_text("⛔ Фақат админ.")
+    if not is_admin(update):
+        await update.effective_message.reply_text("⛔ Фақат админ (шахсий чатда ёзинг).")
         return
     depts = bitrix.bx_get_departments()
     rops = [d for d in depts if "(ROP)" in (d.get("NAME") or "")]
     if not rops:
-        await update.message.reply_text("РОП топилмади.")
+        await update.effective_message.reply_text("РОП топилмади.")
         return
     rop_groups = state.load_rop_groups()
     lines = ["🏢 РОПлар рўйхати:", ""]
@@ -73,41 +76,41 @@ async def cmd_listrops(update: Update, context: ContextTypes.DEFAULT_TYPE):
         status = ("✅ канал: " + chat_id) if chat_id else "❌ канал бириктирилмаган"
         lines.append(d["NAME"] + " — Bitrix ID: " + rop_id + " (бўлим " +
                      str(d["ID"]) + ")\n   " + status)
-    await update.message.reply_text("\n".join(lines))
+    await update.effective_message.reply_text("\n".join(lines))
 
 
 async def cmd_addropgroup(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
-        await update.message.reply_text("⛔ Фақат админ.")
+    if not is_admin(update):
+        await update.effective_message.reply_text("⛔ Фақат админ (шахсий чатда ёзинг).")
         return
     args = context.args or []
     if len(args) < 2:
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             "Қўллаш: /addropgroup РОП_Bitrix_ID КАНАЛ_ID\n"
             "(РОП Bitrix ID — /listrops билан кўринг.\n"
             "Канал ID — ботни каналга admin қилиб қўшиб, каналда /whoami ёзинг.)")
         return
     rop_id, chat_id = args[0], args[1]
     state.set_rop_group(rop_id, chat_id)
-    await update.message.reply_text("✅ Сақланди: РОП " + rop_id + " -> канал " + chat_id)
+    await update.effective_message.reply_text("✅ Сақланди: РОП " + rop_id + " -> канал " + chat_id)
 
 
 async def cmd_removeropgroup(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
-        await update.message.reply_text("⛔ Фақат админ.")
+    if not is_admin(update):
+        await update.effective_message.reply_text("⛔ Фақат админ (шахсий чатда ёзинг).")
         return
     args = context.args or []
     if not args:
-        await update.message.reply_text("Қўллаш: /removeropgroup РОП_Bitrix_ID")
+        await update.effective_message.reply_text("Қўллаш: /removeropgroup РОП_Bitrix_ID")
         return
     rop_id = args[0]
     groups = state.load_rop_groups()
     if rop_id in groups:
         del groups[rop_id]
         state.save_rop_groups(groups)
-        await update.message.reply_text("✅ Ўчирилди: РОП " + rop_id)
+        await update.effective_message.reply_text("✅ Ўчирилди: РОП " + rop_id)
     else:
-        await update.message.reply_text("⚠️ Бу РОП учун бириктирилган канал топилмади.")
+        await update.effective_message.reply_text("⚠️ Бу РОП учун бириктирилган канал топилмади.")
 
 
 # ── Polling job ──────────────────────────────────────────────────────────
