@@ -52,10 +52,6 @@ def build_order_message(order_num, deal_id, products_rows, summa, region_name,
     lines = [
         f"№{order_num:03d}",
         f"🗒Id сделки: {deal_id}",
-    ]
-    if source_name:
-        lines.append(f"🌐Источник: {source_name}")
-    lines += [
         f"📦Продукт: {format_products(products_rows)}",
         f"💵Сумма: {format_money(summa)}",
         f"📍Регион: {region_name or '—'}",
@@ -69,6 +65,9 @@ def build_order_message(order_num, deal_id, products_rows, summa, region_name,
     if employee_number:
         operator_line += f" {employee_number}"
     lines.append(operator_line)
+
+    if source_name:
+        lines.append(f"🌐Источник: {source_name}")
 
     lines.append("")  # бўш қатор
     lines.append(format_status_line(status_key))
