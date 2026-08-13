@@ -18,7 +18,16 @@ for _x in os.environ.get("SA_ADMIN_IDS", "").split(","):
 EMPLOYEE_EMAIL_DOMAIN = os.environ.get("SA_EMPLOYEE_EMAIL_DOMAIN", "sinolifemanager.uz")
 
 # Ҳар неча сониядан бир марта Bitrix'ни текшириш (polling)
-POLL_INTERVAL_SECONDS = int(os.environ.get("SA_POLL_INTERVAL", "90"))
+POLL_INTERVAL_SECONDS = int(os.environ.get("SA_POLL_INTERVAL", "45"))
+
+# "Тасдиқланмади" сделкалар неча кун кузатилади (шундан кейин автомат
+# тўхтатилади — акс ҳолда ойлар ўтгач минглаб эски сделка ҳар poll'да
+# текширилиб, серверни секинлаштиради)
+REJECTED_TRACK_DAYS = int(os.environ.get("SA_REJECTED_TRACK_DAYS", "3"))
+
+# Бир поллда бир вақтнинг ўзида нечта сделкани параллел (thread'да)
+# қайта ишлаш мумкин — Bitrix'ни "QUERY_LIMIT_EXCEEDED" билан урмаслик учун
+MAX_CONCURRENT_BITRIX = int(os.environ.get("SA_MAX_CONCURRENT_BITRIX", "4"))
 
 # ═══════════════════════ Bitrix воронка / стадия кодлари ═══════════════════
 # "Тасдиқлаш" воронкаси (category 4)
@@ -48,6 +57,12 @@ STAGE_DELIVERY_NEW = "C6:NEW"  # Подготовка товара -> ✅ Тас
 # Шунинг учун якуний "рад этилди" ҳолати шу ерда ушланади:
 CATEGORY_PRIMARY = "12"
 STAGE_PRIMARY_REJECTED = "C12:UC_1OM8B2"  # Тасдикланмаган
+
+# "Янги/ўтказиб юборилган сделка"ни аниқлаш учун кузатиладиган ҳамма
+# воронкалар — сделка ТЕЗ (poll оралиғидан тезроқ) бир нечта стадияни
+# "сакраб ўтса" ҳам, шу рўйхатдаги воронкалардан бирида ЖОРИЙ турса —
+# қайси стадияда бўлса ҳам аниқланади (фақат C4:NEW билан чекланмайди)
+TRACKED_CATEGORIES = [CATEGORY_CONFIRM, CATEGORY_PRIMARY, CATEGORY_DELIVERY]
 
 # Статус -> (эмодзи, матн) — каналдаги хабарнинг охирги қатори шундан қурилади
 STATUS_LABELS = {

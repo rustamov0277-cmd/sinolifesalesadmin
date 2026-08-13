@@ -32,6 +32,19 @@ def _bx(method, params=None):
                 url, data=data, headers={"Content-Type": "application/json"})
             with urllib.request.urlopen(req, timeout=TIMEOUT_SEC) as r:
                 return json.loads(r.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            body = ""
+            try:
+                body = e.read().decode("utf-8", errors="ignore")
+            except Exception:
+                pass
+            last_err = f"HTTP {e.code}: {body[:200]}"
+            if "QUERY_LIMIT_EXCEEDED" in body:
+                # Bitrix'нинг ўз чекловига урилдик — узоқроқ кутиб қайта уринамиз
+                log.warning("Bitrix %s: QUERY_LIMIT_EXCEEDED, кутиб қайта уринилади.", method)
+                time.sleep(RETRY_DELAY_SEC * 2)
+            elif attempt < RETRY_COUNT:
+                time.sleep(RETRY_DELAY_SEC)
         except (urllib.error.URLError, socket.timeout, TimeoutError) as e:
             last_err = e
             log.warning("Bitrix %s: уриниш %d/%d муваффақиятсиз (%s)",
@@ -98,6 +111,43 @@ def bx_get_new_confirm_deals(since_iso):
     filt = {
         "CATEGORY_ID": config.CATEGORY_CONFIRM,
         "STAGE_ID": config.STAGE_CONFIRM_NEW,
+    }
+    if since_iso:
+        filt[">DATE_MODIFY"] = since_iso
+    return bx_call_list_all("crm.deal.list", {
+        "filter": filt,
+        "order": {"DATE_MODIFY": "ASC"},
+        "select": ["ID", "TITLE", "CATEGORY_ID", "STAGE_ID", "OPPORTUNITY", "SOURCE_ID",
+                   "CONTACT_ID", "ASSIGNED_BY_ID", config.FIELD_REGION,
+                   config.FIELD_ADDRESS, "DATE_MODIFY"],
+    })
+
+
+def bx_get_recently_modified_tracked_deals(since_iso):
+    """Кузатиладиган БАРЧА воронкаларда (Тасдиқлаш/Первичный/Доставка)
+    since_iso'дан кейин ЎЗГАРГАН сделкалар — сделка тезда бир нечта
+    стадияни "сакраб ўтиб кетган" бўлса ҳам (poll оралиғидан тезроқ),
+    ҳозир қаерда турса ҳам аниқланади."""
+    filt = {"CATEGORY_ID": config.TRACKED_CATEGORIES}
+    if since_iso:
+        filt[">DATE_MODIFY"] = since_iso
+    return bx_call_list_all("crm.deal.list", {
+        "filter": filt,
+        "order": {"DATE_MODIFY": "ASC"},
+        "select": ["ID", "TITLE", "CATEGORY_ID", "STAGE_ID", "OPPORTUNITY", "SOURCE_ID",
+                   "CONTACT_ID", "ASSIGNED_BY_ID", config.FIELD_REGION,
+                   config.FIELD_ADDRESS, "DATE_MODIFY"],
+    })
+
+
+def bx_get_deals_by_stages(category_id, stage_ids, since_iso):
+    """Берилган category_id'даги, stage_ids рўйхатидан бирида турган,
+    since_iso'дан кейин ЎЗГАРГАН сделкалар (бир марталик хабар учун)."""
+    if not stage_ids:
+        return []
+    filt = {
+        "CATEGORY_ID": category_id,
+        "STAGE_ID": list(stage_ids),
     }
     if since_iso:
         filt[">DATE_MODIFY"] = since_iso
@@ -187,6 +237,31 @@ def bx_get_source_name(source_id):
             _sources_cache["map"] = {s["STATUS_ID"]: s["NAME"] for s in resp.get("result", [])}
             _sources_cache["ts"] = now
     return _sources_cache["map"].get(source_id, source_id)
+
+
+_category_stages_cache = {}  # category_id -> {"ts": ..., "stages": {stage_id: name}}
+
+
+def bx_get_stages_for_category(category_id):
+    """Берилган category_id'даги ҳамма стадияларни {stage_id: name} кўринишида
+    қайтаради (6 соат кэш)."""
+    now = time.time()
+    cached = _category_stages_cache.get(category_id)
+    if cached and now - cached["ts"] < 6 * 3600:
+        return cached["stages"]
+    resp = _bx("crm.dealcategory.stage.list", {"id": category_id})
+    stages = {}
+    if "error" not in resp:
+        for s in resp.get("result", []):
+            stages[s["STATUS_ID"]] = s["NAME"]
+    if stages:
+        _category_stages_cache[category_id] = {"ts": now, "stages": stages}
+        return stages
+    return cached["stages"] if cached else {}
+
+
+def bx_get_stage_name(category_id, stage_id):
+    return bx_get_stages_for_category(category_id).get(stage_id, stage_id)
 
 
 def find_rop_for_department(dept_id, depts):
