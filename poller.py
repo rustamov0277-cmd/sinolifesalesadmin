@@ -113,17 +113,21 @@ async def _build_new_deal_entry(bot, deal, status_key="confirm_new"):
         except Exception:
             client_name, phones = "", []
         phone_str = " / ".join(phones[:2]) if phones else "—"
+        already_pending = deal_id in state.get_pending_no_channel()
+        state.add_pending_no_channel(deal_id)  # ҳар poll'да қайта уринилади
         log.warning("Сделка %s: РОП канали топилмади (/addropgroup билан қўшилмаган).", deal_id)
-        for aid in config.ADMIN_IDS:
-            try:
-                await bot.send_message(
-                    chat_id=aid,
-                    text=("⚠️ Сделка #" + deal_id + " учун РОП канали топилмади.\n"
-                          f"👤 Мижоз: {client_name or '—'}\n"
-                          f"📞 Телефон: {phone_str}\n\n"
-                          "/listrops билан РОПларни кўринг, /addropgroup билан бириктиринг."))
-            except Exception as e:
-                log.error("admin warn: %s", e)
+        if not already_pending:  # фақат БИРИНЧИ марта огоҳлантирамиз (спам бўлмаслиги учун)
+            for aid in config.ADMIN_IDS:
+                try:
+                    await bot.send_message(
+                        chat_id=aid,
+                        text=("⚠️ Сделка #" + deal_id + " учун РОП канали топилмади.\n"
+                              f"👤 Мижоз: {client_name or '—'}\n"
+                              f"📞 Телефон: {phone_str}\n\n"
+                              "/listrops билан РОПларни кўринг, /addropgroup билан бириктиринг.\n"
+                              "(Канал қўшилгач, бот АВТОМАТ қайта уринади — қўшимча ҳаракат керакмас.)"))
+                except Exception as e:
+                    log.error("admin warn: %s", e)
         return None
 
     region_id = str(deal.get(config.FIELD_REGION) or "")
@@ -174,6 +178,7 @@ async def _build_new_deal_entry(bot, deal, status_key="confirm_new"):
 
     now_iso = state.now_tz().isoformat()
     log.info("Сделка %s: янги хабар юборилди (канал %s, №%03d).", deal_id, chat_id, order_num)
+    state.remove_pending_no_channel(deal_id)  # энди топилди — кутиш рўйхатидан чиқарамиз
 
     return {
         "chat_id": chat_id,
@@ -364,6 +369,34 @@ async def poll_once(bot):
     since_iso = state.get_last_poll_iso()
     poll_started_at = state.now_tz().isoformat()
     errors = []  # [(deal_id, xato_matni), ...] — poll охирида админга биргаликда юборилади
+
+    # 0) Аввал "канал топилмади" деб қолган сделкаларни ҳар poll'да қайта
+    #    синаймиз (масалан /addropgroup энди қўшилган бўлиши мумкин) —
+    #    MOVED_TIME ўзгармаган бўлса ҳам, бу сделкалар ЎТКАЗИБ ЮБОРИЛМАЙДИ.
+    pending_ids = state.get_pending_no_channel()
+    if pending_ids:
+        try:
+            pending_map = await _bx_call(bitrix.bx_get_deals_by_ids, pending_ids)
+        except Exception as e:
+            log.exception("Pending сделкаларни олишда хато: %s", e)
+            pending_map = {}
+        for deal_id in pending_ids:
+            deal = pending_map.get(deal_id)
+            if not deal:
+                continue  # сделка ўчирилган/топилмади — рўйхатда қолаверади
+            category = str(deal.get("CATEGORY_ID"))
+            stage = deal.get("STAGE_ID")
+            status_key = config.STAGE_TO_STATUS_KEY.get((category, stage))
+            if status_key is None:
+                continue
+            try:
+                entry = await _build_new_deal_entry(bot, deal, status_key=status_key)
+                if entry:
+                    deal_state[deal_id] = entry
+                    log.info("Сделка %s: pending рўйхатидан муваффақиятли юборилди.", deal_id)
+            except Exception as e:
+                log.exception("Сделка %s: pending қайта уринишда хато: %s", deal_id, e)
+                errors.append((deal_id, str(e)))
 
     # 1) Кузатиладиган воронкаларда (Тасдиқлаш/Первичный/Доставка) since_iso'дан
     #    кейин ЎЗГАРГАН, лекин ҳали deal_state'да ЙЎҚ сделкалар — булар "янги"

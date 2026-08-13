@@ -20,6 +20,7 @@ ROP_GROUPS_FILE = BASE_DIR / "rop_groups.json"          # rop_bitrix_id -> chat_
 POLL_META_FILE = BASE_DIR / "poll_meta.json"            # {"last_poll_iso": ...}
 AGGREGATE_FILE = BASE_DIR / "aggregate_channel.json"     # {"chat_id": ...}
 DELIVERY_GROUPS_FILE = BASE_DIR / "delivery_stage_groups.json"  # stage_id -> chat_id
+PENDING_NO_CHANNEL_FILE = BASE_DIR / "pending_no_channel.json"  # [deal_id, ...]
 
 
 def _load(path, default):
@@ -146,3 +147,25 @@ def remove_delivery_stage_group(stage_id):
         _save(DELIVERY_GROUPS_FILE, data)
         return True
     return False
+
+
+# ═══════════════════════ Канали топилмаган сделкалар (қайта уриниш учун) ════
+
+def get_pending_no_channel():
+    return _load(PENDING_NO_CHANNEL_FILE, [])
+
+
+def add_pending_no_channel(deal_id):
+    data = get_pending_no_channel()
+    deal_id = str(deal_id)
+    if deal_id not in data:
+        data.append(deal_id)
+        _save(PENDING_NO_CHANNEL_FILE, data)
+
+
+def remove_pending_no_channel(deal_id):
+    data = get_pending_no_channel()
+    deal_id = str(deal_id)
+    if deal_id in data:
+        data.remove(deal_id)
+        _save(PENDING_NO_CHANNEL_FILE, data)
