@@ -113,4 +113,4 @@ def build_delivery_notification(deal_id, stage_name, products_rows, summa,
     if source_name:
         lines.append(f"🌐Источник: {source_name}")
 
-    return "\n".join(lines)
+    return "\n".join(lines)  
