@@ -386,6 +386,7 @@ async def poll_once(bot):
         status_key = config.STAGE_TO_STATUS_KEY.get((category, stage))
         if status_key is None:
             continue  # ҳали кузатиладиган стадияда эмас (ignored stage) — кейинги poll'да текширилади
+
         try:
             entry = await _build_new_deal_entry(bot, deal, status_key=status_key)
             if entry:
