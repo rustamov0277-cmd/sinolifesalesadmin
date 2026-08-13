@@ -277,6 +277,7 @@ async def _compute_updated_entry(bot, deal_id, entry, fresh_deal):
         except Exception as e:
             log.error("Сделка %s: fallback хабар ҳам юборилмади: %s", deal_id, e)
             await _alert_admins_delivery_failed(bot, deal_id, phones, str(e))
+            await _bx_call(sheets.update_telegram_ok, entry.get("sheet_rows"), False)
             return entry  # ҳеч бўлмаса категория/стадия ўзгармаган ҳолда қолади
 
     # ── Умумий каналдаги нусхасини ҳам янгилаймиз ───────────────────────
@@ -500,7 +501,7 @@ async def poll_once(bot):
 
     # 4) Доставка стадиясига тушган сделкалар — БИР МАРТАЛИК хабар (кузатилмайди)
     try:
-        delivery_errors = await _process_delivery_notifications(bot, since_iso)
+        delivery_errors = await _process_delivery_notifications(bot, since_iso, deal_state)
         errors.extend(delivery_errors)
     except Exception as e:
         log.exception("Доставка хабарларида хато: %s", e)
@@ -510,10 +511,12 @@ async def poll_once(bot):
         await _notify_admins_about_errors(bot, errors)
 
 
-async def _process_delivery_notifications(bot, since_iso):
+async def _process_delivery_notifications(bot, since_iso, deal_state):
     """Category=6 (Доставка) воронкасида, админ /adddeliverygroup билан
     бириктирган стадияларга тушган сделкаларга БИР МАРТА хабар юборади.
-    Ҳеч қандай кузатиш/edit йўқ — фақат "тушди" деган фактга хабар."""
+    Ҳеч қандай кузатиш/edit йўқ — фақат "тушди" деган фактга хабар.
+    Sheets'даги "Pochta" устуни (агар сделка аввал confirm-оқимидан ўтган
+    бўлса, deal_state'даги sheet_rows орқали) 1/0 билан янгиланади."""
     mapping = state.get_delivery_stage_groups()
     if not mapping:
         return []
@@ -533,6 +536,7 @@ async def _process_delivery_notifications(bot, since_iso):
         chat_id = mapping.get(stage_id)
         if not chat_id:
             continue
+        sheet_rows = deal_state.get(deal_id, {}).get("sheet_rows")
         try:
             stage_name = await _bx_call(bitrix.bx_get_stage_name,
                                          config.CATEGORY_DELIVERY, stage_id)
@@ -558,9 +562,14 @@ async def _process_delivery_notifications(bot, since_iso):
             await bot.send_message(chat_id=chat_id, text=text)
             log.info("Сделка %s: доставка хабари юборилди (стадия %s, канал %s).",
                       deal_id, stage_id, chat_id)
+            if sheet_rows:
+                await _bx_call(sheets.update_pochta_ok, sheet_rows, True)
         except Exception as e:
             log.exception("Сделка %s: доставка хабари юборилмади: %s", deal_id, e)
             errors.append((deal_id, str(e)))
+            if sheet_rows:
+                await _bx_call(sheets.update_pochta_ok, sheet_rows, False)
+
 
     return errors
 

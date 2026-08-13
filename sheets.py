@@ -26,8 +26,10 @@ log = logging.getLogger("sheets")
 
 HEADERS = ["№", "Sana", "Vaqt", "ROP", "Operator", "Mijoz", "Telefon",
            "Mahsulot", "Soni", "Summa", "Region", "Manzil", "Deal_ID",
-           "Xodim_raqami", "Status", "Manba"]
-STATUS_COL = HEADERS.index("Status") + 1  # gspread 1-индексли
+           "Xodim_raqami", "Status", "Manba", "Telegram", "Pochta"]
+STATUS_COL = HEADERS.index("Status") + 1     # gspread 1-индексли
+TELEGRAM_COL = HEADERS.index("Telegram") + 1  # асосий буюртма-хабари муваффақиятими (1/0)
+POCHTA_COL = HEADERS.index("Pochta") + 1      # доставка-стадия хабари муваффақиятими (1/0)
 
 _book_cache = {"book": None}
 
@@ -117,6 +119,8 @@ def log_new_order(order_num, deal_id, products_rows, summa, region_name,
                 employee_number,                  # Xodim_raqami
                 status_cell,                      # Status
                 source_name,                      # Manba
+                1,                                 # Telegram (1 = муваффақиятли юборилди)
+                0,                                 # Pochta (0 = ҳали доставка хабари юборилмаган)
             ])
 
         ws.append_rows(rows_to_add, value_input_option="USER_ENTERED")
@@ -139,3 +143,27 @@ def update_status(row_numbers, status_key):
             ws.update_cell(row_number, STATUS_COL, status_cell)
     except Exception as e:
         log.error("update_status(rows=%s): %s", row_numbers, e)
+
+
+def update_telegram_ok(row_numbers, ok):
+    """Асосий буюртма-хабари муваффақият ҳолатини янгилайди (1/0)."""
+    if not row_numbers:
+        return
+    try:
+        ws = _ensure_ws()
+        for row_number in row_numbers:
+            ws.update_cell(row_number, TELEGRAM_COL, 1 if ok else 0)
+    except Exception as e:
+        log.error("update_telegram_ok(rows=%s): %s", row_numbers, e)
+
+
+def update_pochta_ok(row_numbers, ok):
+    """Доставка-стадия (курьер гуруҳи) хабари муваффақият ҳолатини янгилайди (1/0)."""
+    if not row_numbers:
+        return
+    try:
+        ws = _ensure_ws()
+        for row_number in row_numbers:
+            ws.update_cell(row_number, POCHTA_COL, 1 if ok else 0)
+    except Exception as e:
+        log.error("update_pochta_ok(rows=%s): %s", row_numbers, e)
