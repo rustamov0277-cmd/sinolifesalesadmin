@@ -37,7 +37,6 @@ def build_order_message(order_num, deal_id, products_rows, summa, region_name,
 
     №006
     🗒Id сделки: 363678
-    🌐Источник: ...        (бор бўлса)
     📦Продукт: ...
     💵Сумма: 2350000
     📍Регион: Андижан
@@ -46,6 +45,7 @@ def build_order_message(order_num, deal_id, products_rows, summa, region_name,
     📞Телефон: +998...
     📞Телефон: +998...   (иккинчиси бор бўлсагина)
     Оператор: Исм Фамилия 119
+    🌐Источник: ...        (бор бўлса)
 
     Тастиклаш 🕔
     """
@@ -85,4 +85,32 @@ def replace_status_line(old_text, new_status_key):
             return "\n".join(lines)
     # агар матн бўш бўлса (кутилмаган ҳолат) — шунчаки қўшиб қўямиз
     lines.append(format_status_line(new_status_key))
+    return "\n".join(lines)
+
+
+def build_delivery_notification(deal_id, stage_name, products_rows, summa,
+                                 region_name, address, client_name, phones,
+                                 operator_name, employee_number, source_name=""):
+    """Доставка воронкасида бирор стадияга тушганда — БИР МАРТАЛИК хабар
+    (кузатилмайди, кейин таҳрирланмайди)."""
+    lines = [
+        f"🚚 {stage_name}",
+        f"🗒Id сделки: {deal_id}",
+        f"📦Продукт: {format_products(products_rows)}",
+        f"💵Сумма: {format_money(summa)}",
+        f"📍Регион: {region_name or '—'}",
+        f"🚚Адрес: {address or '—'}",
+        f"👤Имя клиента: {client_name or '—'}",
+    ]
+    for phone in phones[:2]:
+        lines.append(f"📞Телефон: {phone}")
+
+    operator_line = "Оператор: " + (operator_name or "—")
+    if employee_number:
+        operator_line += f" {employee_number}"
+    lines.append(operator_line)
+
+    if source_name:
+        lines.append(f"🌐Источник: {source_name}")
+
     return "\n".join(lines)
