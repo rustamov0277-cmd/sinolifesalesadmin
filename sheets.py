@@ -26,10 +26,11 @@ log = logging.getLogger("sheets")
 
 HEADERS = ["№", "Sana", "Vaqt", "ROP", "Operator", "Mijoz", "Telefon",
            "Mahsulot", "Soni", "Summa", "Region", "Manzil", "Deal_ID",
-           "Xodim_raqami", "Status", "Manba", "Telegram", "Pochta"]
-STATUS_COL = HEADERS.index("Status") + 1     # gspread 1-индексли
-TELEGRAM_COL = HEADERS.index("Telegram") + 1  # асосий буюртма-хабари муваффақиятими (1/0)
-POCHTA_COL = HEADERS.index("Pochta") + 1      # доставка-стадия хабари муваффақиятими (1/0)
+           "Xodim_raqami", "Status", "Manba", "Telegram", "Moy_sklad", "Pochta"]
+STATUS_COL = HEADERS.index("Status") + 1        # gspread 1-индексли
+TELEGRAM_COL = HEADERS.index("Telegram") + 1     # асосий буюртма-хабари муваффақиятими (1/0)
+MOY_SKLAD_COL = HEADERS.index("Moy_sklad") + 1   # "В пути" стадиясига тушдими (1/0)
+POCHTA_COL = HEADERS.index("Pochta") + 1         # доставка-стадия хабари муваффақиятими (1/0)
 
 _book_cache = {"book": None}
 
@@ -120,6 +121,7 @@ def log_new_order(order_num, deal_id, products_rows, summa, region_name,
                 status_cell,                      # Status
                 source_name,                      # Manba
                 1,                                 # Telegram (1 = муваффақиятли юборилди)
+                0,                                 # Moy_sklad (0 = ҳали "В пути"га тушмаган)
                 0,                                 # Pochta (0 = ҳали доставка хабари юборилмаган)
             ])
 
@@ -167,3 +169,15 @@ def update_pochta_ok(row_numbers, ok):
             ws.update_cell(row_number, POCHTA_COL, 1 if ok else 0)
     except Exception as e:
         log.error("update_pochta_ok(rows=%s): %s", row_numbers, e)
+
+
+def update_moy_sklad_ok(row_numbers, ok):
+    """Сделка 'В пути' (C6:UC_4UD7I9) стадиясига тушганини белгилайди (1/0)."""
+    if not row_numbers:
+        return
+    try:
+        ws = _ensure_ws()
+        for row_number in row_numbers:
+            ws.update_cell(row_number, MOY_SKLAD_COL, 1 if ok else 0)
+    except Exception as e:
+        log.error("update_moy_sklad_ok(rows=%s): %s", row_numbers, e)

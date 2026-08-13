@@ -29,6 +29,12 @@ REJECTED_TRACK_DAYS = int(os.environ.get("SA_REJECTED_TRACK_DAYS", "3"))
 # қайта ишлаш мумкин — Bitrix'ни "QUERY_LIMIT_EXCEEDED" билан урмаслик учун
 MAX_CONCURRENT_BITRIX = int(os.environ.get("SA_MAX_CONCURRENT_BITRIX", "4"))
 
+# "Кенгайтирилган аниқлаш" (poll оралиғида сакраб ўтган сделкаларни тутиб
+# олиш) фақат ШУНЧА КУН ичида ЯРАТИЛГАН сделкаларга татбиқ этилади — акс
+# ҳолда ойлар олдин рад этилган эски сделка бугун тасодифан таҳрирланса
+# (изоҳ қўшилса ва ҳ.к.), бот уни хато равишда "янги воқеа" деб ўтказиб юборарди.
+CATCHUP_MAX_AGE_DAYS = int(os.environ.get("SA_CATCHUP_MAX_AGE_DAYS", "3"))
+
 # ═══════════════════════ Bitrix воронка / стадия кодлари ═══════════════════
 # "Тасдиқлаш" воронкаси (category 4)
 CATEGORY_CONFIRM = "4"
@@ -50,6 +56,10 @@ CATEGORY_CONFIRM_IGNORED_STAGES = {
 # "Доставка" воронкаси (category 6)
 CATEGORY_DELIVERY = "6"
 STAGE_DELIVERY_NEW = "C6:NEW"  # Подготовка товара -> ✅ Тасдиқланди
+
+# "В пути" стадияси — Sheets'даги "Moy_sklad" устунини 1'га белгилаш учун
+# (Telegram хабари эмас, фақат Sheets индикатори)
+STAGE_DELIVERY_ON_THE_WAY = "C6:UC_4UD7I9"  # В пути
 
 # МУҲИМ: "Ошибка первичный отдел" стадияси танланганда, Bitrix'нинг ўзи
 # сделкани автомат равишда "Первичный отдел" (category 12) воронкасидаги

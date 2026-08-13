@@ -365,6 +365,31 @@ async def catchup_missed_deals(bot, days=1):
     return sent_count, errors
 
 
+async def _process_moy_sklad_tracking(since_iso, deal_state):
+    """Сделка 'В пути' (C6:UC_4UD7I9) стадиясига тушганда, Sheets'даги
+    "Moy_sklad" устунини 1'га белгилайди. Telegram хабари ЙЎҚ — фақат
+    Sheets индикатори (сделка confirm-оқимидан ўтиб, sheet_rows'и бор
+    бўлсагина ишлайди)."""
+    try:
+        deals = await _bx_call(bitrix.bx_get_deals_by_stages,
+                                config.CATEGORY_DELIVERY,
+                                [config.STAGE_DELIVERY_ON_THE_WAY], since_iso)
+    except Exception as e:
+        log.exception("'В пути' сделкаларини олишда хато: %s", e)
+        return
+
+    for deal in deals:
+        deal_id = str(deal["ID"])
+        sheet_rows = deal_state.get(deal_id, {}).get("sheet_rows")
+        if not sheet_rows:
+            continue
+        try:
+            await _bx_call(sheets.update_moy_sklad_ok, sheet_rows, True)
+            log.info("Сделка %s: 'В пути' — Moy_sklad=1 белгиланди.", deal_id)
+        except Exception as e:
+            log.error("Сделка %s: Moy_sklad янгиланмади: %s", deal_id, e)
+
+
 async def poll_once(bot):
     deal_state = state.load_deal_state()  # БИР МАРТА ўқиймиз
     since_iso = state.get_last_poll_iso()
@@ -506,6 +531,14 @@ async def poll_once(bot):
     except Exception as e:
         log.exception("Доставка хабарларида хато: %s", e)
         errors.append(("—", f"Доставка хабарларида хато: {e}"))
+
+    # 5) "В пути" стадиясига тушган сделкалар — Sheets'даги "Moy_sklad" устунини
+    #    1'га белгилаймиз (Telegram хабари ЙЎҚ, фақат Sheets индикатори)
+    try:
+        await _process_moy_sklad_tracking(since_iso, deal_state)
+    except Exception as e:
+        log.exception("Moy_sklad кузатувида хато: %s", e)
+        errors.append(("—", f"Moy_sklad кузатувида хато: {e}"))
 
     if errors:
         await _notify_admins_about_errors(bot, errors)
