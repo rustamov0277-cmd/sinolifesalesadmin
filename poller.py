@@ -92,12 +92,20 @@ async def _build_new_deal_entry(bot, deal, status_key="confirm_new"):
     chat_id, operator_name, employee_number, rop_name = await _resolve_channel_and_operator(deal)
 
     if not chat_id:
+        contact_id = deal.get("CONTACT_ID")
+        try:
+            client_name, phones = await _bx_call(bitrix.bx_get_contact, contact_id)
+        except Exception:
+            client_name, phones = "", []
+        phone_str = " / ".join(phones[:2]) if phones else "—"
         log.warning("Сделка %s: РОП канали топилмади (/addropgroup билан қўшилмаган).", deal_id)
         for aid in config.ADMIN_IDS:
             try:
                 await bot.send_message(
                     chat_id=aid,
                     text=("⚠️ Сделка #" + deal_id + " учун РОП канали топилмади.\n"
+                          f"👤 Мижоз: {client_name or '—'}\n"
+                          f"📞 Телефон: {phone_str}\n\n"
                           "/listrops билан РОПларни кўринг, /addropgroup билан бириктиринг."))
             except Exception as e:
                 log.error("admin warn: %s", e)
@@ -293,6 +301,46 @@ async def _compute_updated_entry(bot, deal_id, entry, fresh_deal):
 
 
 # ═══════════════════════ Асосий poll цикли ═════════════════════════════════
+
+async def catchup_missed_deals(bot, days=1):
+    """Қўлда чақириладиган "тўлдириш" — сўнгги N кунда ЎЗГАРГАН, лекин ҳали
+    deal_state'да ЙЎҚ (ботдан ўтказиб юборилган) сделкаларни топиб, ҳозирги
+    ҳолатидан бошлаб хабар юборади. Одатий poll'дан фарқли — since_iso'ни
+    эмас, N кунлик кенг ойнани ишлатади."""
+    from datetime import timedelta
+    since_dt = state.now_tz() - timedelta(days=days)
+    since_iso = since_dt.isoformat()
+
+    deal_state = state.load_deal_state()
+    try:
+        modified_deals = await _bx_call(bitrix.bx_get_recently_modified_tracked_deals, since_iso)
+    except Exception as e:
+        log.exception("catchup: сделкаларни олишда хато: %s", e)
+        return 0, [("—", str(e))]
+
+    sent_count = 0
+    errors = []
+    for deal in modified_deals:
+        deal_id = str(deal["ID"])
+        if deal_id in deal_state:
+            continue
+        category = str(deal.get("CATEGORY_ID"))
+        stage = deal.get("STAGE_ID")
+        status_key = config.STAGE_TO_STATUS_KEY.get((category, stage))
+        if status_key is None:
+            continue
+        try:
+            entry = await _build_new_deal_entry(bot, deal, status_key=status_key)
+            if entry:
+                deal_state[deal_id] = entry
+                sent_count += 1
+        except Exception as e:
+            log.exception("catchup: сделка %s хато: %s", deal_id, e)
+            errors.append((deal_id, str(e)))
+
+    state.save_deal_state(deal_state)
+    return sent_count, errors
+
 
 async def poll_once(bot):
     deal_state = state.load_deal_state()  # БИР МАРТА ўқиймиз
