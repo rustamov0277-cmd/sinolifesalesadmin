@@ -379,11 +379,30 @@ async def poll_once(bot):
 
     for deal in modified_deals:
         deal_id = str(deal["ID"])
-        if deal_id in deal_state:
-            continue  # аллақачон кузатилаяпти
         category = str(deal.get("CATEGORY_ID"))
         stage = deal.get("STAGE_ID")
         status_key = config.STAGE_TO_STATUS_KEY.get((category, stage))
+
+        if deal_id in deal_state:
+            # Аллақачон кузатилган (ҳатто "терминал" бўлса ҳам) — лекин
+            # MOVED_TIME ЯНГИ бўлгани учун шу ерга тушди, демак стадияси
+            # ЯНА ўзгарган (масалан аввал "Тасдиқланди" бўлган сделка
+            # орқага, C4:NEW'га қайтарилган). Терминал белгисидан қатъи
+            # назар қайта текширамиз (жонлантириш).
+            if status_key is None:
+                continue  # ignored стадия — ўтказиб юборамиз
+            entry = deal_state[deal_id]
+            try:
+                updated = await _compute_updated_entry(bot, deal_id, entry, deal)
+                deal_state[deal_id] = updated
+                if updated.get("status_key") != entry.get("status_key"):
+                    log.info("Сделка %s: қайта жонлантирилди (терминалдан статус -> %s).",
+                              deal_id, updated.get("status_key"))
+            except Exception as e:
+                log.exception("Сделка %s: қайта текширишда хато: %s", deal_id, e)
+                errors.append((deal_id, str(e)))
+            continue
+
         if status_key is None:
             continue  # ҳали кузатиладиган стадияда эмас (ignored stage) — кейинги poll'да текширилади
 
