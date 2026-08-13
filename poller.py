@@ -70,6 +70,21 @@ def _with_rop_header(text, rop_name):
     return f"👥 РОП: {rop_name}\n\n" + text
 
 
+async def _alert_admins_delivery_failed(bot, deal_id, phones, reason):
+    """Telegram'га хабар (янги ёки таҳрирланган) ҳеч қандай усулда
+    ЮБОРИЛМАГАНДА — админларга дарҳол, телефон рақами билан хабар беради."""
+    phone_str = " / ".join([p for p in (phones or []) if p]) or "—"
+    text = (f"🚨 Telegram'га хабар ЮБОРИЛМАДИ!\n"
+            f"Сделка: #{deal_id}\n"
+            f"📞 Телефон: {phone_str}\n"
+            f"Сабаб: {reason}")
+    for aid in config.ADMIN_IDS:
+        try:
+            await bot.send_message(chat_id=aid, text=text)
+        except Exception as e:
+            log.error("Админга delivery-fail огоҳлантириши юборилмади (%s): %s", aid, e)
+
+
 async def _fetch_deal_content(deal_id, deal_like):
     """Сделка учун контакт/маҳсулот/манба маълумотини (параллел, thread'да) олади."""
     contact_id = deal_like.get("CONTACT_ID")
@@ -131,6 +146,7 @@ async def _build_new_deal_entry(bot, deal, status_key="confirm_new"):
         msg = await bot.send_message(chat_id=chat_id, text=text)
     except Exception as e:
         log.error("Сделка %s: хабар юборилмади: %s", deal_id, e)
+        await _alert_admins_delivery_failed(bot, deal_id, phones, str(e))
         return None
 
     # ── Умумий каналга ҳам нусхаси (РОП номи билан) ─────────────────────
@@ -255,6 +271,7 @@ async def _compute_updated_entry(bot, deal_id, entry, fresh_deal):
             entry["sent_at"] = state.now_tz().isoformat()
         except Exception as e:
             log.error("Сделка %s: fallback хабар ҳам юборилмади: %s", deal_id, e)
+            await _alert_admins_delivery_failed(bot, deal_id, phones, str(e))
             return entry  # ҳеч бўлмаса категория/стадия ўзгармаган ҳолда қолади
 
     # ── Умумий каналдаги нусхасини ҳам янгилаймиз ───────────────────────

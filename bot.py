@@ -15,7 +15,6 @@ SinolifeSalesAdmin v2 — сделка статуси кузатувчиси.
   /listdeliverystages         — Доставка воронкаси стадиялари ва бириктирилган каналлар
   /adddeliverygroup <stage_id> <chat_id> — стадияга гуруҳ бириктириш (бир марталик хабар)
   /removedeliverygroup <stage_id> — бириктиришни ўчириш
-  /catchup <кун>              — ўтказиб юборилган сделкаларни қўлда тўлдириш (default: 1 кун)
   /whoami                    — ўз Telegram/чат ID'ингизни кўриш (канал ID олиш учун қулай)
 """
 import sys
@@ -191,23 +190,6 @@ async def cmd_removedeliverygroup(update: Update, context: ContextTypes.DEFAULT_
         await update.effective_message.reply_text("⚠️ Бу стадия учун бириктирилган канал топилмади.")
 
 
-async def cmd_catchup(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update):
-        await update.effective_message.reply_text("⛔ Фақат админ (шахсий чатда ёзинг).")
-        return
-    args = context.args or []
-    days = 1
-    if args and args[0].isdigit():
-        days = int(args[0])
-    await update.effective_message.reply_text(
-        f"⏳ Сўнгги {days} кунда ўтказиб юборилган сделкалар текширилмоқда...")
-    sent_count, errors = await poller.catchup_missed_deals(context.bot, days=days)
-    text = f"✅ Catch-up тугади: {sent_count} та сделка учун хабар юборилди."
-    if errors:
-        text += f"\n⚠️ {len(errors)} та хато (bot.log'да батафсил)."
-    await update.effective_message.reply_text(text)
-
-
 # ── Polling job ──────────────────────────────────────────────────────────
 
 async def job_poll(context: ContextTypes.DEFAULT_TYPE):
@@ -255,7 +237,6 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("listdeliverystages", cmd_listdeliverystages))
     app.add_handler(CommandHandler("adddeliverygroup", cmd_adddeliverygroup))
     app.add_handler(CommandHandler("removedeliverygroup", cmd_removedeliverygroup))
-    app.add_handler(CommandHandler("catchup", cmd_catchup))
 
     app.job_queue.run_repeating(job_poll, interval=config.POLL_INTERVAL_SECONDS, first=10)
     app.job_queue.run_daily(job_daily_stats, time=dt.time(hour=22, minute=0, tzinfo=state.TZ))
