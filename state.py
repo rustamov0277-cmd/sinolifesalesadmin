@@ -19,6 +19,7 @@ ORDER_COUNTERS_FILE = BASE_DIR / "order_counters.json"  # chat_id -> {date, coun
 ROP_GROUPS_FILE = BASE_DIR / "rop_groups.json"          # rop_bitrix_id -> chat_id
 POLL_META_FILE = BASE_DIR / "poll_meta.json"            # {"last_poll_iso": ...}
 AGGREGATE_FILE = BASE_DIR / "aggregate_channel.json"     # {"chat_id": ...}
+DELIVERY_GROUPS_FILE = BASE_DIR / "delivery_stage_groups.json"  # stage_id -> chat_id
 
 
 def _load(path, default):
@@ -124,3 +125,24 @@ def get_aggregate_chat_id():
 
 def set_aggregate_chat_id(chat_id):
     _save(AGGREGATE_FILE, {"chat_id": str(chat_id)})
+
+
+# ═══════════════════════ Доставка стадияси ↔ гуруҳ (бир марталик хабар) ═════
+
+def get_delivery_stage_groups():
+    return _load(DELIVERY_GROUPS_FILE, {})
+
+
+def set_delivery_stage_group(stage_id, chat_id):
+    data = get_delivery_stage_groups()
+    data[stage_id] = str(chat_id)
+    _save(DELIVERY_GROUPS_FILE, data)
+
+
+def remove_delivery_stage_group(stage_id):
+    data = get_delivery_stage_groups()
+    if stage_id in data:
+        del data[stage_id]
+        _save(DELIVERY_GROUPS_FILE, data)
+        return True
+    return False
