@@ -63,6 +63,18 @@ async def _resolve_channel_and_operator(deal):
     return chat_id, operator_name, employee_number, rop_name
 
 
+def _resolve_status_key(category, stage, previous_stage):
+    """STAGE_TO_STATUS_KEY'дан оддий қидиришдан кўра қаттиқроқ мантиқ:
+    "Тасдикланмаган" (C12:UC_1OM8B2) статуси ФАҚАТ аниқ "Ошибка первичный
+    отдел" (C4:LOSE) стадиясидан келган бўлса қабул қилинади — бошқа йўл
+    билан (масалан бошқа автоматика ёки қўлда) шу стадияга тушган сделка
+    эса ХАТО равишда "янги воқеа" деб хабар қилинмаслиги учун."""
+    if (category, stage) == (config.CATEGORY_PRIMARY, config.STAGE_PRIMARY_REJECTED):
+        if previous_stage != config.STAGE_CONFIRM_LOSE:
+            return None
+    return config.STAGE_TO_STATUS_KEY.get((category, stage))
+
+
 def _with_rop_header(text, rop_name):
     """Умумий канал учун — хабарнинг бошига РОП номини қўшади."""
     if not rop_name:
@@ -206,7 +218,7 @@ async def _compute_updated_entry(bot, deal_id, entry, fresh_deal):
     ҳолда) қайтаради — чақирувчи доим entry'ни deal_state'га қайтаради."""
     category = str(fresh_deal.get("CATEGORY_ID"))
     stage = fresh_deal.get("STAGE_ID")
-    status_key = config.STAGE_TO_STATUS_KEY.get((category, stage))
+    status_key = _resolve_status_key(category, stage, fresh_deal.get("PREVIOUS_STAGE_ID"))
 
     if status_key is None:
         # Кузатилмайдиган стадия — хабарни ЎЗГАРТИРМАЙМИЗ, стадияни сақлаймиз
@@ -349,7 +361,7 @@ async def catchup_missed_deals(bot, days=1):
             continue
         category = str(deal.get("CATEGORY_ID"))
         stage = deal.get("STAGE_ID")
-        status_key = config.STAGE_TO_STATUS_KEY.get((category, stage))
+        status_key = _resolve_status_key(category, stage, deal.get("PREVIOUS_STAGE_ID"))
         if status_key is None:
             continue
         try:
@@ -412,7 +424,7 @@ async def poll_once(bot):
                 continue  # сделка ўчирилган/топилмади — рўйхатда қолаверади
             category = str(deal.get("CATEGORY_ID"))
             stage = deal.get("STAGE_ID")
-            status_key = config.STAGE_TO_STATUS_KEY.get((category, stage))
+            status_key = _resolve_status_key(category, stage, deal.get("PREVIOUS_STAGE_ID"))
             if status_key is None:
                 continue
             try:
@@ -440,7 +452,7 @@ async def poll_once(bot):
         deal_id = str(deal["ID"])
         category = str(deal.get("CATEGORY_ID"))
         stage = deal.get("STAGE_ID")
-        status_key = config.STAGE_TO_STATUS_KEY.get((category, stage))
+        status_key = _resolve_status_key(category, stage, deal.get("PREVIOUS_STAGE_ID"))
 
         if deal_id in deal_state:
             # Аллақачон кузатилган (ҳатто "терминал" бўлса ҳам) — лекин

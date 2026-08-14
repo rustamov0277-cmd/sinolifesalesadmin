@@ -98,7 +98,7 @@ def bx_get_deals_by_ids(deal_ids):
         "filter": {"ID": list(deal_ids)},
         "select": ["ID", "TITLE", "CATEGORY_ID", "STAGE_ID", "OPPORTUNITY", "SOURCE_ID",
                    "CONTACT_ID", "ASSIGNED_BY_ID", config.FIELD_REGION,
-                   config.FIELD_ADDRESS, "DATE_MODIFY"],
+                   config.FIELD_ADDRESS, "DATE_MODIFY", "DATE_CREATE", "MOVED_TIME", "PREVIOUS_STAGE_ID"],
     })
     if "error" in resp:
         log.error("bx_get_deals_by_ids: %s", resp)
@@ -119,24 +119,28 @@ def bx_get_new_confirm_deals(since_iso):
         "order": {"DATE_MODIFY": "ASC"},
         "select": ["ID", "TITLE", "CATEGORY_ID", "STAGE_ID", "OPPORTUNITY", "SOURCE_ID",
                    "CONTACT_ID", "ASSIGNED_BY_ID", config.FIELD_REGION,
-                   config.FIELD_ADDRESS, "DATE_MODIFY"],
+                   config.FIELD_ADDRESS, "DATE_MODIFY", "DATE_CREATE", "MOVED_TIME", "PREVIOUS_STAGE_ID"],
     })
 
 
 def bx_get_recently_modified_tracked_deals(since_iso):
     """Кузатиладиган БАРЧА воронкаларда (Тасдиқлаш/Первичный/Доставка)
-    since_iso'дан кейин ЎЗГАРГАН сделкалар — сделка тезда бир нечта
-    стадияни "сакраб ўтиб кетган" бўлса ҳам (poll оралиғидан тезроқ),
-    ҳозир қаерда турса ҳам аниқланади."""
+    ЖОРИЙ стадияга since_iso'дан кейин КЎЧГАН (MOVED_TIME) сделкалар.
+
+    МУҲИМ: DATE_MODIFY эмас, МАХСУС MOVED_TIME ишлатилади — DATE_MODIFY
+    сделканинг ИСТАЛГАН майдони (изоҳ, телефон ва ҳ.к.) ўзгарса ҳам
+    янгиланади, бу эса эски сделкаларни хато равишда "янги стадия
+    ўзгариши" деб кўрсатиб юборарди. MOVED_TIME эса ФАҚАТ стадия
+    ҳақиқатан ўзгарганда янгиланади — тўғри мантиқ шу."""
     filt = {"CATEGORY_ID": config.TRACKED_CATEGORIES}
     if since_iso:
-        filt[">DATE_MODIFY"] = since_iso
+        filt[">MOVED_TIME"] = since_iso
     return bx_call_list_all("crm.deal.list", {
         "filter": filt,
-        "order": {"DATE_MODIFY": "ASC"},
+        "order": {"MOVED_TIME": "ASC"},
         "select": ["ID", "TITLE", "CATEGORY_ID", "STAGE_ID", "OPPORTUNITY", "SOURCE_ID",
                    "CONTACT_ID", "ASSIGNED_BY_ID", config.FIELD_REGION,
-                   config.FIELD_ADDRESS, "DATE_MODIFY"],
+                   config.FIELD_ADDRESS, "DATE_MODIFY", "DATE_CREATE", "MOVED_TIME", "PREVIOUS_STAGE_ID"],
     })
 
 
@@ -150,13 +154,13 @@ def bx_get_deals_by_stages(category_id, stage_ids, since_iso):
         "STAGE_ID": list(stage_ids),
     }
     if since_iso:
-        filt[">DATE_MODIFY"] = since_iso
+        filt[">MOVED_TIME"] = since_iso  # фақат стадия ҳақиқатан ўзгарганда (DATE_MODIFY эмас)
     return bx_call_list_all("crm.deal.list", {
         "filter": filt,
-        "order": {"DATE_MODIFY": "ASC"},
+        "order": {"MOVED_TIME": "ASC"},
         "select": ["ID", "TITLE", "CATEGORY_ID", "STAGE_ID", "OPPORTUNITY", "SOURCE_ID",
                    "CONTACT_ID", "ASSIGNED_BY_ID", config.FIELD_REGION,
-                   config.FIELD_ADDRESS, "DATE_MODIFY"],
+                   config.FIELD_ADDRESS, "DATE_MODIFY", "DATE_CREATE", "MOVED_TIME", "PREVIOUS_STAGE_ID"],
     })
 
 
