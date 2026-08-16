@@ -59,7 +59,12 @@ def _bx(method, params=None):
 
 
 def bx_call_list_all(method, params, result_key=None):
-    """Bitrix'нинг 'start' пагинациясини тўлиқ айланиб чиқади."""
+    """Bitrix'нинг 'start' пагинациясини тўлиқ айланиб чиқади.
+
+    МУҲИМ: хато чиқса None қайтаради (бўш рўйхат [] эмас!) — токи
+    "ҳеч нарса ўзгармаган" билан "Bitrix'га уланиб бўлмади"ни адаштирмасин.
+    Чақирувчи (poller.py) буни кўриб, since_iso'ни СУРМАСЛИГИ керак —
+    акс ҳолда узилиш пайтидаги ўзгаришлар абадий йўқолиб қолади."""
     out = []
     start = 0
     while True:
@@ -68,7 +73,7 @@ def bx_call_list_all(method, params, result_key=None):
         resp = _bx(method, p)
         if "error" in resp:
             log.error("%s (list_all): %s", method, resp)
-            break
+            return None  # ХАТО — [] эмас, аниқ "муваффақиятсиз" белгиси
         result = resp.get("result")
         batch = result.get(result_key) if result_key else result
         if not batch:

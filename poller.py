@@ -389,6 +389,9 @@ async def _process_moy_sklad_tracking(since_iso, deal_state):
     except Exception as e:
         log.exception("'В пути' сделкаларини олишда хато: %s", e)
         return
+    if deals is None:
+        log.warning("'В пути' сделкаларини олиб бўлмади (Bitrix уланиш хатоси).")
+        return
 
     for deal in deals:
         deal_id = str(deal["ID"])
@@ -441,11 +444,14 @@ async def poll_once(bot):
     #    ёки "poll оралиғида тезда бир нечта стадияни сакраб ўтган" сделкалар.
     #    Ҳозир қаерда турса ҳам (C4:NEW бўлмаса ҳам), status_key аниқланса —
     #    шу нуқтадан бошлаб хабар яратилади (буюртма умуман ўтказиб юборилмайди).
-    try:
-        modified_deals = await _bx_call(bitrix.bx_get_recently_modified_tracked_deals, since_iso)
-    except Exception as e:
-        log.exception("Ўзгарган сделкаларни олишда хато: %s", e)
-        errors.append(("—", f"Ўзгарган сделкаларни олишда хато: {e}"))
+    modified_deals = await _bx_call(bitrix.bx_get_recently_modified_tracked_deals, since_iso)
+    fetch_ok = modified_deals is not None
+    if not fetch_ok:
+        # Bitrix'га уланиб бўлмади — since_iso'НИ СУРМАЙМИЗ, кейинги
+        # poll'да ХУДДИ ШУ ойна яна текширилади (ўзгаришлар йўқолмайди)
+        log.warning("Ўзгарган сделкаларни олиб бўлмади (Bitrix уланиш хатоси) — "
+                    "since_iso сурилмайди, кейинги poll'да қайта уринилади.")
+        errors.append(("—", "Ўзгарган сделкаларни олиб бўлмади (Bitrix уланиш хатоси)"))
         modified_deals = []
 
     for deal in modified_deals:
@@ -533,8 +539,10 @@ async def poll_once(bot):
             log.info("Сделка %s: %d кундан бери 'Тасдиқланмади' — кузатиш тўхтатилди.",
                       deal_id, config.REJECTED_TRACK_DAYS)
 
-    state.save_deal_state(deal_state)  # БИР МАРТА ёзамиз
-    state.set_last_poll_iso(poll_started_at)
+    state.save_deal_state(deal_state)  # БИР МАРТА ёзамиз (бу барибир сақланади)
+    if fetch_ok:
+        state.set_last_poll_iso(poll_started_at)
+    # else: since_iso эскисича қолади — кейинги poll'да ХУДДИ ШУ ойна қайта текширилади
 
     # 4) Доставка стадиясига тушган сделкалар — БИР МАРТАЛИК хабар (кузатилмайди)
     try:
@@ -573,6 +581,9 @@ async def _process_delivery_notifications(bot, since_iso, deal_state):
     except Exception as e:
         log.exception("Доставка сделкаларини олишда хато: %s", e)
         return [("—", f"Доставка сделкаларини олишда хато: {e}")]
+    if deals is None:
+        log.warning("Доставка сделкаларини олиб бўлмади (Bitrix уланиш хатоси).")
+        return [("—", "Доставка сделкаларини олиб бўлмади (Bitrix уланиш хатоси)")]
 
     errors = []
     for deal in deals:
