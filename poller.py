@@ -207,6 +207,7 @@ async def _build_new_deal_entry(bot, deal, status_key="confirm_new"):
         "sent_at": now_iso,      # fallback'да қайта ёзилиши мумкин (edit chegarasi учун)
         "last_text": text,
         "sheet_rows": sheet_rows,
+        "repeat_from": None,
         "terminal": False,
     }
 
@@ -287,6 +288,7 @@ async def _send_repeat_message(bot, deal_id, entry, fresh_deal, category, stage)
         "sent_at": now_iso,
         "last_text": text,
         "sheet_rows": sheet_rows,
+        "repeat_from": prev_status,   # 🔁 белгиси кейинги янгилашларда ҳам сақланиши учун
         "terminal": False,
     })
     log.info("Сделка %s: ҚАЙТА ТУШДИ (аввал %s) — янги хабар юборилди (№%03d).",
@@ -356,7 +358,8 @@ async def _compute_updated_entry(bot, deal_id, entry, fresh_deal):
         summa=summa, region_name=region_name, address=address,
         client_name=client_name, phones=phones, operator_name=operator_name,
         employee_number=employee_number, status_key=status_key,
-        source_name=source_name)
+        source_name=source_name,
+        repeat_from_status=entry.get("repeat_from"))  # 🔁 белгиси ўчиб кетмаслиги учун
 
     if new_text == entry.get("last_text"):
         entry["category"] = category
