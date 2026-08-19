@@ -213,6 +213,87 @@ async def _build_new_deal_entry(bot, deal, status_key="confirm_new"):
 
 # ═══════════════════════ Мавжуд сделкани янгилаш ═══════════════════════════
 
+async def _send_repeat_message(bot, deal_id, entry, fresh_deal, category, stage):
+    """Сделка яна "Заказ тасдиқлаш"га қайтганда — ЯНГИ хабар юборади
+    (эски хабар ўз ҳолича қолади, таҳрирланмайди). Хабар бошида
+    "🔁 ҚАЙТА ТУШДИ (аввал: ...)" белгиси кўрсатилади."""
+    prev_status = entry.get("status_key")
+    chat_id = entry["chat_id"]
+    rop_name = entry.get("rop_name", "")
+
+    region_id = str(fresh_deal.get(config.FIELD_REGION) or "")
+    region_name = config.REGION_NAME_BY_ID.get(region_id, "")
+    address = fresh_deal.get(config.FIELD_ADDRESS) or ""
+    summa = fresh_deal.get("OPPORTUNITY") or 0
+
+    client_name, phones, products_rows, source_name = await _fetch_deal_content(deal_id, fresh_deal)
+
+    assigned_id = fresh_deal.get("ASSIGNED_BY_ID")
+    bitrix_user = await _bx_call(bitrix.bx_get_user, assigned_id) if assigned_id else None
+    operator_name = ((bitrix_user.get("NAME") or "") + " " +
+                      (bitrix_user.get("LAST_NAME") or "")).strip() if bitrix_user else ""
+    employee_number = bitrix.get_employee_number(bitrix_user) if bitrix_user else ""
+
+    order_num = state.next_order_number(chat_id)  # янги кунлик рақам
+
+    text = message_format.build_order_message(
+        order_num=order_num, deal_id=deal_id, products_rows=products_rows,
+        summa=summa, region_name=region_name, address=address,
+        client_name=client_name, phones=phones, operator_name=operator_name,
+        employee_number=employee_number, status_key="confirm_new",
+        source_name=source_name, repeat_from_status=prev_status)
+
+    try:
+        msg = await bot.send_message(chat_id=chat_id, text=text)
+    except Exception as e:
+        log.error("Сделка %s: қайта хабар юборилмади: %s", deal_id, e)
+        await _alert_admins_delivery_failed(bot, deal_id, phones, str(e))
+        return entry
+
+    # Умумий каналга ҳам нусхаси
+    agg_chat_id = state.get_aggregate_chat_id()
+    agg_message_id = None
+    if agg_chat_id:
+        try:
+            agg_msg = await bot.send_message(chat_id=agg_chat_id,
+                                              text=_with_rop_header(text, rop_name))
+            agg_message_id = agg_msg.message_id
+        except Exception as e:
+            log.error("Сделка %s: қайта хабар умумий каналга юборилмади: %s", deal_id, e)
+
+    # Sheets'га ҳам ЯНГИ қатор(лар)
+    try:
+        sheet_rows = await _bx_call(
+            sheets.log_new_order,
+            order_num=order_num, deal_id=deal_id, products_rows=products_rows,
+            summa=summa, region_name=region_name, address=address,
+            client_name=client_name, phones=phones, operator_name=operator_name,
+            employee_number=employee_number, status_key="confirm_new",
+            rop_name=rop_name, source_name=source_name)
+    except Exception as e:
+        log.error("Сделка %s: қайта хабар Sheets'га ёзилмади: %s", deal_id, e)
+        sheet_rows = []
+
+    now_iso = state.now_tz().isoformat()
+    entry.update({
+        "message_id": msg.message_id,
+        "agg_message_id": agg_message_id,
+        "agg_chat_id": agg_chat_id,
+        "category": category,
+        "stage": stage,
+        "status_key": "confirm_new",
+        "order_num": order_num,
+        "created_at": now_iso,   # янги цикл бошланди
+        "sent_at": now_iso,
+        "last_text": text,
+        "sheet_rows": sheet_rows,
+        "terminal": False,
+    })
+    log.info("Сделка %s: ҚАЙТА ТУШДИ (аввал %s) — янги хабар юборилди (№%03d).",
+              deal_id, prev_status, order_num)
+    return entry
+
+
 async def _compute_updated_entry(bot, deal_id, entry, fresh_deal):
     """entry'ни (агар керак бўлса) янгилайди ва қайтаради. Ҳеч қандай
     ўзгариш бўлмаса ҳам entry'нинг ўзини (эҳтимол category/stage янгиланган
@@ -227,12 +308,24 @@ async def _compute_updated_entry(bot, deal_id, entry, fresh_deal):
         entry["stage"] = stage
         return entry
 
+    sent_at = datetime.fromisoformat(entry["sent_at"])
+    hours_passed = (state.now_tz() - sent_at).total_seconds() / 3600
+
+    # ── СДЕЛКА ЯНА "Заказ тасдиқлаш" (C4:NEW)'га ҚАЙТДИ ─────────────────
+    # Аввалги хабардан камида REPEAT_MESSAGE_MIN_HOURS соат ўтган бўлса —
+    # эски хабарни таҳрирламаймиз, балки ЯНГИ хабар юборамиз (аввалги
+    # статус белгиси билан). Бу 48 соатлик текширувдан ОЛДИН бажарилади,
+    # чунки 1-2 кундан кейин қайтган сделка акс ҳолда "терминал" бўлиб
+    # қолиб, умуман хабар бермай кетарди.
+    if (status_key == "confirm_new"
+            and entry.get("status_key") != "confirm_new"
+            and hours_passed >= config.REPEAT_MESSAGE_MIN_HOURS):
+        return await _send_repeat_message(bot, deal_id, entry, fresh_deal, category, stage)
+
     # ── 48 соатдан ошган бўлса — умуман кузатишни тўхтатамиз ────────────
     # (Telegram'да барибир edit қилиб бўлмайди, янги хабар ҳам юбормаймиз —
     # шунчаки шу сделкани "терминал" деб белгилаб, ортиқча Bitrix сўровидан
     # ва ортиқча хабардан қочамиз)
-    sent_at = datetime.fromisoformat(entry["sent_at"])
-    hours_passed = (state.now_tz() - sent_at).total_seconds() / 3600
     if hours_passed >= config.TELEGRAM_EDIT_LIMIT_HOURS:
         entry["category"] = category
         entry["stage"] = stage

@@ -2,6 +2,14 @@
 """Каналдаги буюртма хабарининг матнини қуради (яратиш ва таҳрирлаш учун бир хил формат)."""
 import config
 
+# "Қайта тушди" белгисида аввалги статусни кўрсатиш учун
+STATUS_LABELS_FOR_REPEAT = {
+    "confirm_new": ("🕔", "Тасдиқлаш"),
+    "no_answer":   ("🟡", "Кутармади (нд)"),
+    "confirmed":   ("✅", "Тасдиқланди"),
+    "rejected":    ("❌", "Тасдиқланмади"),
+}
+
 
 def format_products(rows):
     """crm.deal.productrows.get натижасидан 'Ном - N ta' қаторлари."""
@@ -31,25 +39,20 @@ def format_status_line(status_key):
 
 def build_order_message(order_num, deal_id, products_rows, summa, region_name,
                          address, client_name, phones, operator_name,
-                         employee_number, status_key, source_name=""):
+                         employee_number, status_key, source_name="",
+                         repeat_from_status=None):
     """
-    Тўлиқ хабар матни:
-
-    №006
-    🗒Id сделки: 363678
-    📦Продукт: ...
-    💵Сумма: 2350000
-    📍Регион: Андижан
-    🚚Адрес: ...
-    👤Имя клиента: ...
-    📞Телефон: +998...
-    📞Телефон: +998...   (иккинчиси бор бўлсагина)
-    Оператор: Исм Фамилия 119
-    🌐Источник: ...        (бор бўлса)
-
-    Тастиклаш 🕔
+    Тўлиқ хабар матни. repeat_from_status берилса (масалан "rejected"),
+    хабарнинг бошида "қайта тушди" белгиси кўрсатилади.
     """
-    lines = [
+    lines = []
+    if repeat_from_status:
+        prev_emoji, prev_text = STATUS_LABELS_FOR_REPEAT.get(
+            repeat_from_status, ("", repeat_from_status))
+        lines.append(f"🔁 ҚАЙТА ТУШДИ (аввал: {prev_text} {prev_emoji})")
+        lines.append("")
+
+    lines += [
         f"№{order_num:03d}",
         f"🗒Id сделки: {deal_id}",
         f"📦Продукт: {format_products(products_rows)}",
@@ -113,4 +116,4 @@ def build_delivery_notification(deal_id, stage_name, products_rows, summa,
     if source_name:
         lines.append(f"🌐Источник: {source_name}")
 
-    return "\n".join(lines)  
+    return "\n".join(lines)

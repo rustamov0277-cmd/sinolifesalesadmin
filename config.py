@@ -108,6 +108,12 @@ REGION_NAME_BY_ID = {rid: name for rid, name in REGIONS}
 # 48 соатдан кейин eski хабарни edit қилиб бўлмайди — шунда бот ЯНГИ хабар юборади.
 TELEGRAM_EDIT_LIMIT_HOURS = 48
 
+# Сделка ЯНА "Заказ тасдиқлаш" (C4:NEW) стадиясига қайтганда — эски хабарни
+# таҳрирлаш ЎРНИГА ЯНГИ хабар юборилади (аввалги статус белгиси билан),
+# лекин фақат аввалги хабардан камида шунча соат ўтган бўлса.
+# (Акс ҳолда ходим тезда 2 марта стадия алмаштирса, дубликат хабар кетарди.)
+REPEAT_MESSAGE_MIN_HOURS = int(os.environ.get("SA_REPEAT_MESSAGE_MIN_HOURS", "6"))
+
 # ═══════════════════════ Google Sheets (ҳисобот учун) ═══════════════════════
 SHEET_ID = os.environ.get("SA_SHEET_ID", "14-rGmriVBRFUlziFKSKdTVhpl8kK0GOke5Y4OpzYpmM")
 SA_JSON = os.environ.get("SA_SA_JSON", "/root/sinolifesalesadmin_v2/service_account.json")
