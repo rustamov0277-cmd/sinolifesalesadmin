@@ -317,8 +317,11 @@ async def _compute_updated_entry(bot, deal_id, entry, fresh_deal):
     # статус белгиси билан). Бу 48 соатлик текширувдан ОЛДИН бажарилади,
     # чунки 1-2 кундан кейин қайтган сделка акс ҳолда "терминал" бўлиб
     # қолиб, умуман хабар бермай кетарди.
+    # ДИҚҚАТ: СТАДИЯ бўйича текширамиз (status_key эмас) — чунки сделка
+    # кузатилмайдиган стадияга (масалан UTECHKA) ўтганда status_key
+    # ўзгармай қолади, у ҳолда status_key'га таяниш хато берарди.
     if (status_key == "confirm_new"
-            and entry.get("status_key") != "confirm_new"
+            and entry.get("stage") != config.STAGE_CONFIRM_NEW
             and hours_passed >= config.REPEAT_MESSAGE_MIN_HOURS):
         return await _send_repeat_message(bot, deal_id, entry, fresh_deal, category, stage)
 
