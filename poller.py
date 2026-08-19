@@ -64,14 +64,15 @@ async def _resolve_channel_and_operator(deal):
 
 
 def _resolve_status_key(category, stage, previous_stage):
-    """STAGE_TO_STATUS_KEY'дан оддий қидиришдан кўра қаттиқроқ мантиқ:
-    "Тасдикланмаган" (C12:UC_1OM8B2) статуси ФАҚАТ аниқ "Ошибка первичный
-    отдел" (C4:LOSE) стадиясидан келган бўлса қабул қилинади — бошқа йўл
-    билан (масалан бошқа автоматика ёки қўлда) шу стадияга тушган сделка
-    эса ХАТО равишда "янги воқеа" деб хабар қилинмаслиги учун."""
-    if (category, stage) == (config.CATEGORY_PRIMARY, config.STAGE_PRIMARY_REJECTED):
-        if previous_stage != config.STAGE_CONFIRM_LOSE:
-            return None
+    """STAGE_TO_STATUS_KEY'дан статусни аниқлайди.
+
+    ЭСКИ МАНТИҚ (олиб ташланди): "Тасдикланмаган" фақат аниқ C4:LOSE'дан
+    келганда қабул қилинарди — бу ЖУДА қаттиқ бўлиб чиқди: Bitrix
+    автоматикаси ҳар доим ҳам PREVIOUS_STAGE_ID'ни бир хил қилиб
+    қолдирмайди, натижада ҳақиқий "Тасдиқланмади" ўтишлар хабарсиз
+    қолиб кетарди. Эски сделкаларнинг тасодифан хабар беришидан ҳимоя
+    учун MOVED_TIME филтри (bitrix.py) ёлғиз ўзи етарли — шунинг учун
+    бу ерда previous_stage'ни энди текширмаймиз."""
     return config.STAGE_TO_STATUS_KEY.get((category, stage))
 
 
