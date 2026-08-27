@@ -19,7 +19,7 @@ poll_once()ни чақиради.
 """
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import config
 import state
@@ -658,7 +658,11 @@ async def poll_once(bot):
 
     state.save_deal_state(deal_state)  # БИР МАРТА ёзамиз (бу барибир сақланади)
     if fetch_ok:
-        state.set_last_poll_iso(poll_started_at)
+        # Қоплама билан сақлаймиз — poll бошланган сонияда кўчган сделка
+        # тирқишга тушиб қолмаслиги учун (config.POLL_OVERLAP_SECONDS'га қаранг)
+        safe_iso = (datetime.fromisoformat(poll_started_at)
+                    - timedelta(seconds=config.POLL_OVERLAP_SECONDS)).isoformat()
+        state.set_last_poll_iso(safe_iso)
     # else: since_iso эскисича қолади — кейинги poll'да ХУДДИ ШУ ойна қайта текширилади
 
     # 4) Доставка стадиясига тушган сделкалар — БИР МАРТАЛИК хабар (кузатилмайди)

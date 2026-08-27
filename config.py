@@ -124,6 +124,15 @@ TELEGRAM_EDIT_LIMIT_HOURS = 48
 # (Акс ҳолда ходим тезда 2 марта стадия алмаштирса, дубликат хабар кетарди.)
 REPEAT_MESSAGE_MIN_HOURS = int(os.environ.get("SA_REPEAT_MESSAGE_MIN_HOURS", "6"))
 
+# ── Poll "қоплама" (overlap) ───────────────────────────────────────────────
+# Сўнгги текширув вақти шунча сония ОРҚАГА сурилиб сақланади.
+# НЕГА КЕРАК: сделка айнан poll бошланган сонияда кўчса, Bitrix уни ҳали
+# қайтармаслиги мумкин; кейинги poll эса ">MOVED_TIME" фильтри туфайли уни
+# аллақачон "ўтган" деб ҳисоблаб, АБАДИЙ ўтказиб юборарди. Қоплама шу
+# тирқишни ёпади. Аллақачон кузатилаётган сделкалар барибир четлаб
+# ўтилгани учун, бу қўшимча юк бермайди.
+POLL_OVERLAP_SECONDS = int(os.environ.get("SA_POLL_OVERLAP_SECONDS", "120"))
+
 # ═══════════════════════ Google Sheets (ҳисобот учун) ═══════════════════════
 SHEET_ID = os.environ.get("SA_SHEET_ID", "14-rGmriVBRFUlziFKSKdTVhpl8kK0GOke5Y4OpzYpmM")
 SA_JSON = os.environ.get("SA_SA_JSON", "/root/sinolifesalesadmin_v2/service_account.json")
