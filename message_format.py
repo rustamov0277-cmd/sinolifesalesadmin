@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 """Каналдаги буюртма хабарининг матнини қуради (яратиш ва таҳрирлаш учун бир хил формат)."""
+import re
+
 import config
 
 # "Қайта тушди" белгисида аввалги статусни кўрсатиш учун
@@ -8,7 +10,28 @@ STATUS_LABELS_FOR_REPEAT = {
     "no_answer":   ("🟡", "Кутармади (нд)"),
     "confirmed":   ("✅", "Тасдиқланди"),
     "rejected":    ("❌", "Тасдиқланмади"),
+    "unconfirmed_shipped": ("🟣", "Тасдиқланмай чиқди"),
 }
+
+
+def clean_comment(raw, limit=300):
+    """Bitrix 'Комментарий' майдонини тоза матнга айлантиради.
+    Майдон HTML/BB-код бўлиши мумкин (қалин, курсив, рўйхат ва ҳ.к.)."""
+    if not raw:
+        return ""
+    s = str(raw)
+    s = re.sub(r"<br\s*/?>", "\n", s, flags=re.I)      # <br> -> қатор
+    s = re.sub(r"</(p|div|li)>", "\n", s, flags=re.I)
+    s = re.sub(r"<[^>]+>", "", s)                        # қолган HTML теглар
+    s = re.sub(r"\[/?[a-zA-Z][^\]]*\]", "", s)          # BB-код: [b], [/url] ...
+    s = (s.replace("&nbsp;", " ").replace("&amp;", "&")
+          .replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", '"'))
+    s = re.sub(r"[ \t]+", " ", s)
+    s = re.sub(r"\n{2,}", "\n", s)
+    s = s.strip()
+    if len(s) > limit:
+        s = s[:limit].rstrip() + "…"
+    return s
 
 
 def format_products(rows):
@@ -40,10 +63,12 @@ def format_status_line(status_key):
 def build_order_message(order_num, deal_id, products_rows, summa, region_name,
                          address, client_name, phones, operator_name,
                          employee_number, status_key, source_name="",
-                         repeat_from_status=None):
+                         repeat_from_status=None, reason=""):
     """
-    Тўлиқ хабар матни. repeat_from_status берилса (масалан "rejected"),
-    хабарнинг бошида "қайта тушди" белгиси кўрсатилади.
+    Тўлиқ хабар матни.
+      repeat_from_status — берилса, хабар бошида "🔁 ҚАЙТА ТУШДИ" белгиси.
+      reason — сделка рад этилганда, Bitrix'даги "Комментарий" майдонидан
+               олинган сабаб (статус қаторидан кейин кўрсатилади).
     """
     lines = []
     if repeat_from_status:
@@ -74,6 +99,10 @@ def build_order_message(order_num, deal_id, products_rows, summa, region_name,
 
     lines.append("")  # бўш қатор
     lines.append(format_status_line(status_key))
+
+    # Рад этилган / тасдиқланмай чиққан бўлса — сабабини кўрсатамиз
+    if reason and status_key in ("rejected", "unconfirmed_shipped"):
+        lines.append(f"📝 Сабаби: {reason}")
 
     return "\n".join(lines)
 

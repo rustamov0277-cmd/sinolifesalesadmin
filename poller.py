@@ -63,7 +63,7 @@ async def _resolve_channel_and_operator(deal):
     return chat_id, operator_name, employee_number, rop_name
 
 
-def _resolve_status_key(category, stage, previous_stage):
+def _resolve_status_key(category, stage, previous_stage, deal=None):
     """STAGE_TO_STATUS_KEY'дан статусни аниқлайди.
 
     ЭСКИ МАНТИҚ (олиб ташланди): "Тасдикланмаган" фақат аниқ C4:LOSE'дан
@@ -72,8 +72,21 @@ def _resolve_status_key(category, stage, previous_stage):
     қолдирмайди, натижада ҳақиқий "Тасдиқланмади" ўтишлар хабарсиз
     қолиб кетарди. Эски сделкаларнинг тасодифан хабар беришидан ҳимоя
     учун MOVED_TIME филтри (bitrix.py) ёлғиз ўзи етарли — шунинг учун
-    бу ерда previous_stage'ни энди текширмаймиз."""
-    return config.STAGE_TO_STATUS_KEY.get((category, stage))
+    бу ерда previous_stage'ни энди текширмаймиз.
+
+    ҚЎШИМЧА: Доставкага (C6:NEW) тушган сделка ҳар доим ҳам тасдиқланган
+    бўлмайди — айрим буюртмалар тасдиқланмаса ҳам почтага чиқарилади.
+    Буни фақат "Тастиклаш анализ" майдонидан билиш мумкин:
+      Тастикланган (714)              -> ✅ Тасдиқланди
+      Недозвон булиб чикарилган (716) -> 🟣 Тасдиқланмай чиқди"""
+    key = config.STAGE_TO_STATUS_KEY.get((category, stage))
+
+    if key == "confirmed" and deal is not None:
+        analysis = str(deal.get(config.FIELD_CONFIRM_ANALYSIS) or "").strip()
+        if analysis == config.CONFIRM_ANALYSIS_NO_ANSWER:
+            return "unconfirmed_shipped"
+
+    return key
 
 
 def _with_rop_header(text, rop_name):
@@ -151,13 +164,14 @@ async def _build_new_deal_entry(bot, deal, status_key="confirm_new"):
     client_name, phones, products_rows, source_name = await _fetch_deal_content(deal_id, deal)
 
     order_num = state.next_order_number(chat_id)
+    reason = message_format.clean_comment(deal.get("COMMENTS"))
 
     text = message_format.build_order_message(
         order_num=order_num, deal_id=deal_id, products_rows=products_rows,
         summa=summa, region_name=region_name, address=address,
         client_name=client_name, phones=phones, operator_name=operator_name,
         employee_number=employee_number, status_key=status_key,
-        source_name=source_name)
+        source_name=source_name, reason=reason)
 
     try:
         msg = await bot.send_message(chat_id=chat_id, text=text)
@@ -236,13 +250,14 @@ async def _send_repeat_message(bot, deal_id, entry, fresh_deal, category, stage)
     employee_number = bitrix.get_employee_number(bitrix_user) if bitrix_user else ""
 
     order_num = state.next_order_number(chat_id)  # янги кунлик рақам
+    reason = message_format.clean_comment(fresh_deal.get("COMMENTS"))
 
     text = message_format.build_order_message(
         order_num=order_num, deal_id=deal_id, products_rows=products_rows,
         summa=summa, region_name=region_name, address=address,
         client_name=client_name, phones=phones, operator_name=operator_name,
         employee_number=employee_number, status_key="confirm_new",
-        source_name=source_name, repeat_from_status=prev_status)
+        source_name=source_name, repeat_from_status=prev_status, reason=reason)
 
     try:
         msg = await bot.send_message(chat_id=chat_id, text=text)
@@ -302,7 +317,7 @@ async def _compute_updated_entry(bot, deal_id, entry, fresh_deal):
     ҳолда) қайтаради — чақирувчи доим entry'ни deal_state'га қайтаради."""
     category = str(fresh_deal.get("CATEGORY_ID"))
     stage = fresh_deal.get("STAGE_ID")
-    status_key = _resolve_status_key(category, stage, fresh_deal.get("PREVIOUS_STAGE_ID"))
+    status_key = _resolve_status_key(category, stage, fresh_deal.get("PREVIOUS_STAGE_ID"), fresh_deal)
 
     if status_key is None:
         # Кузатилмайдиган стадия — хабарни ЎЗГАРТИРМАЙМИЗ, стадияни сақлаймиз
@@ -353,12 +368,14 @@ async def _compute_updated_entry(bot, deal_id, entry, fresh_deal):
                       (bitrix_user.get("LAST_NAME") or "")).strip() if bitrix_user else ""
     employee_number = bitrix.get_employee_number(bitrix_user) if bitrix_user else ""
 
+    reason = message_format.clean_comment(fresh_deal.get("COMMENTS"))
+
     new_text = message_format.build_order_message(
         order_num=entry["order_num"], deal_id=deal_id, products_rows=products_rows,
         summa=summa, region_name=region_name, address=address,
         client_name=client_name, phones=phones, operator_name=operator_name,
         employee_number=employee_number, status_key=status_key,
-        source_name=source_name,
+        source_name=source_name, reason=reason,
         repeat_from_status=entry.get("repeat_from"))  # 🔁 белгиси ўчиб кетмаслиги учун
 
     if new_text == entry.get("last_text"):
@@ -461,7 +478,7 @@ async def catchup_missed_deals(bot, days=1):
             continue
         category = str(deal.get("CATEGORY_ID"))
         stage = deal.get("STAGE_ID")
-        status_key = _resolve_status_key(category, stage, deal.get("PREVIOUS_STAGE_ID"))
+        status_key = _resolve_status_key(category, stage, deal.get("PREVIOUS_STAGE_ID"), deal)
         if status_key is None:
             continue
         try:
@@ -527,7 +544,7 @@ async def poll_once(bot):
                 continue  # сделка ўчирилган/топилмади — рўйхатда қолаверади
             category = str(deal.get("CATEGORY_ID"))
             stage = deal.get("STAGE_ID")
-            status_key = _resolve_status_key(category, stage, deal.get("PREVIOUS_STAGE_ID"))
+            status_key = _resolve_status_key(category, stage, deal.get("PREVIOUS_STAGE_ID"), deal)
             if status_key is None:
                 continue
             try:
@@ -558,7 +575,7 @@ async def poll_once(bot):
         deal_id = str(deal["ID"])
         category = str(deal.get("CATEGORY_ID"))
         stage = deal.get("STAGE_ID")
-        status_key = _resolve_status_key(category, stage, deal.get("PREVIOUS_STAGE_ID"))
+        status_key = _resolve_status_key(category, stage, deal.get("PREVIOUS_STAGE_ID"), deal)
 
         if deal_id in deal_state:
             # Аллақачон кузатилган (ҳатто "терминал" бўлса ҳам) — лекин
