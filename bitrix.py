@@ -2,59 +2,99 @@
 """
 Bitrix24 REST API билан ишлаш — барча сўровлар шу ердан ўтади.
 
-МУҲИМ: Bitrix TLS баъзан "қотиб" қолади (TCP уланади, handshake тугамайди).
-Шунинг учун ҳар сўровда RETRY бор (3 марта, орасида кутиш билан).
+⚠️ МУҲИМ ТЕХНИК ҚАРОР: HTTP сўровлар Python'нинг urllib'и билан ЭМАС,
+система curl'и орқали юборилади.
+
+НЕГА: бу серверда Bitrix'га Python urllib орқали уланиш вақти-вақти билан
+TLS handshake'да "қотиб" қоларди (`_ssl.c:983: The handshake operation
+timed out`) — айни пайтда curl ўша сўровни 0.24 сонияда бажарарди.
+Натижада poll 90 сония ўрнига 4 дақиқа давом этиб, навбатдагилари
+ўтказиб юборилар, хабарлар соатлаб кечикарди.
+Худди шу муаммо МойСклад интеграциясида ҳам бўлган ва curl билан ҳал қилинган.
+
+Ҳар сўровда RETRY бор. Timeout'лар атайлаб КИЧИК: узилиш бўлса тезда
+воз кечиб, кейинги poll'да қайта уриниш — узоқ кутишдан афзал
+(маълумот йўқолмайди: poller.py since_iso'ни сурмайди).
 """
 import json
 import logging
+import os
+import subprocess
 import time
-import urllib.request
-import urllib.error
-import socket
 
 import config
 
 log = logging.getLogger("bitrix")
 
-RETRY_COUNT = 3
-RETRY_DELAY_SEC = 2
-TIMEOUT_SEC = 20
+RETRY_COUNT = int(os.environ.get("SA_BX_RETRY", "3"))
+RETRY_DELAY_SEC = float(os.environ.get("SA_BX_RETRY_DELAY", "1"))
+TIMEOUT_SEC = int(os.environ.get("SA_BX_TIMEOUT", "10"))       # битта уриниш
+CONNECT_TIMEOUT_SEC = int(os.environ.get("SA_BX_CONNECT_TIMEOUT", "5"))
 
 
 def _bx(method, params=None):
-    """Bitrix REST методини чақиради. Хатода {'error': ...} қайтаради (exception эмас)."""
+    """Bitrix REST методини чақиради (curl орқали).
+    Хатода {'error': ...} қайтаради — exception ОТМАЙДИ."""
     url = config.BITRIX_WEBHOOK + method + ".json"
-    data = json.dumps(params or {}).encode("utf-8")
+    body = json.dumps(params or {})
+    cmd = [
+        "curl", "-sS", "--compressed",
+        "--connect-timeout", str(CONNECT_TIMEOUT_SEC),
+        "--max-time", str(TIMEOUT_SEC),
+        "-w", "\n__HTTP__%{http_code}",
+        "-H", "Content-Type: application/json",
+        "--data-binary", "@-",
+        url,
+    ]
+
     last_err = None
     for attempt in range(1, RETRY_COUNT + 1):
         try:
-            req = urllib.request.Request(
-                url, data=data, headers={"Content-Type": "application/json"})
-            with urllib.request.urlopen(req, timeout=TIMEOUT_SEC) as r:
-                return json.loads(r.read().decode("utf-8"))
-        except urllib.error.HTTPError as e:
-            body = ""
-            try:
-                body = e.read().decode("utf-8", errors="ignore")
-            except Exception:
-                pass
-            last_err = f"HTTP {e.code}: {body[:200]}"
-            if "QUERY_LIMIT_EXCEEDED" in body:
-                # Bitrix'нинг ўз чекловига урилдик — узоқроқ кутиб қайта уринамиз
+            res = subprocess.run(cmd, input=body, capture_output=True,
+                                 text=True, timeout=TIMEOUT_SEC + 5)
+            out = res.stdout or ""
+            if "__HTTP__" not in out:
+                last_err = (res.stderr or "curl javob bermadi").strip()[:200]
+                log.warning("Bitrix %s: уриниш %d/%d муваффақиятсиз (%s)",
+                            method, attempt, RETRY_COUNT, last_err)
+                if attempt < RETRY_COUNT:
+                    time.sleep(RETRY_DELAY_SEC)
+                continue
+
+            payload, code = out.rsplit("__HTTP__", 1)
+            code = code.strip()
+
+            if code == "200":
+                try:
+                    return json.loads(payload)
+                except json.JSONDecodeError as e:
+                    last_err = f"JSON parse: {e}"
+                    log.error("Bitrix %s: жавобни ўқиб бўлмади: %s", method, payload[:200])
+                    break
+
+            # Bitrix'нинг ўз чеклови — узоқроқ кутиб қайта уринамиз
+            if "QUERY_LIMIT_EXCEEDED" in payload:
                 log.warning("Bitrix %s: QUERY_LIMIT_EXCEEDED, кутиб қайта уринилади.", method)
-                time.sleep(RETRY_DELAY_SEC * 2)
-            elif attempt < RETRY_COUNT:
+                last_err = "QUERY_LIMIT_EXCEEDED"
+                time.sleep(RETRY_DELAY_SEC * 3)
+                continue
+
+            last_err = f"HTTP {code}: {payload[:200]}"
+            log.warning("Bitrix %s: уриниш %d/%d — %s",
+                        method, attempt, RETRY_COUNT, last_err)
+            if attempt < RETRY_COUNT:
                 time.sleep(RETRY_DELAY_SEC)
-        except (urllib.error.URLError, socket.timeout, TimeoutError) as e:
-            last_err = e
-            log.warning("Bitrix %s: уриниш %d/%d муваффақиятсиз (%s)",
-                        method, attempt, RETRY_COUNT, e)
+
+        except subprocess.TimeoutExpired:
+            last_err = f"timeout ({TIMEOUT_SEC}s)"
+            log.warning("Bitrix %s: уриниш %d/%d — timeout", method, attempt, RETRY_COUNT)
             if attempt < RETRY_COUNT:
                 time.sleep(RETRY_DELAY_SEC)
         except Exception as e:
-            last_err = e
+            last_err = str(e)
             log.error("Bitrix %s: кутилмаган хато: %s", method, e)
             break
+
     return {"error": "connection_failed", "error_description": str(last_err)}
 
 
@@ -103,7 +143,8 @@ def bx_get_deals_by_ids(deal_ids):
         "filter": {"ID": list(deal_ids)},
         "select": ["ID", "TITLE", "CATEGORY_ID", "STAGE_ID", "OPPORTUNITY", "SOURCE_ID",
                    "CONTACT_ID", "ASSIGNED_BY_ID", config.FIELD_REGION,
-                   config.FIELD_ADDRESS, "DATE_MODIFY", "DATE_CREATE", "MOVED_TIME", "PREVIOUS_STAGE_ID"],
+                   config.FIELD_ADDRESS, "DATE_MODIFY", "DATE_CREATE", "MOVED_TIME", "PREVIOUS_STAGE_ID",
+                   "COMMENTS", config.FIELD_CONFIRM_ANALYSIS],
     })
     if "error" in resp:
         log.error("bx_get_deals_by_ids: %s", resp)
@@ -124,7 +165,8 @@ def bx_get_new_confirm_deals(since_iso):
         "order": {"DATE_MODIFY": "ASC"},
         "select": ["ID", "TITLE", "CATEGORY_ID", "STAGE_ID", "OPPORTUNITY", "SOURCE_ID",
                    "CONTACT_ID", "ASSIGNED_BY_ID", config.FIELD_REGION,
-                   config.FIELD_ADDRESS, "DATE_MODIFY", "DATE_CREATE", "MOVED_TIME", "PREVIOUS_STAGE_ID"],
+                   config.FIELD_ADDRESS, "DATE_MODIFY", "DATE_CREATE", "MOVED_TIME", "PREVIOUS_STAGE_ID",
+                   "COMMENTS", config.FIELD_CONFIRM_ANALYSIS],
     })
 
 
@@ -145,7 +187,8 @@ def bx_get_recently_modified_tracked_deals(since_iso):
         "order": {"MOVED_TIME": "ASC"},
         "select": ["ID", "TITLE", "CATEGORY_ID", "STAGE_ID", "OPPORTUNITY", "SOURCE_ID",
                    "CONTACT_ID", "ASSIGNED_BY_ID", config.FIELD_REGION,
-                   config.FIELD_ADDRESS, "DATE_MODIFY", "DATE_CREATE", "MOVED_TIME", "PREVIOUS_STAGE_ID"],
+                   config.FIELD_ADDRESS, "DATE_MODIFY", "DATE_CREATE", "MOVED_TIME", "PREVIOUS_STAGE_ID",
+                   "COMMENTS", config.FIELD_CONFIRM_ANALYSIS],
     })
 
 
@@ -165,7 +208,8 @@ def bx_get_deals_by_stages(category_id, stage_ids, since_iso):
         "order": {"MOVED_TIME": "ASC"},
         "select": ["ID", "TITLE", "CATEGORY_ID", "STAGE_ID", "OPPORTUNITY", "SOURCE_ID",
                    "CONTACT_ID", "ASSIGNED_BY_ID", config.FIELD_REGION,
-                   config.FIELD_ADDRESS, "DATE_MODIFY", "DATE_CREATE", "MOVED_TIME", "PREVIOUS_STAGE_ID"],
+                   config.FIELD_ADDRESS, "DATE_MODIFY", "DATE_CREATE", "MOVED_TIME", "PREVIOUS_STAGE_ID",
+                   "COMMENTS", config.FIELD_CONFIRM_ANALYSIS],
     })
 
 
